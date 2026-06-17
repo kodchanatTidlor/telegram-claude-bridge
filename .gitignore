@@ -1,0 +1,8 @@
+.env
+.enabled
+.listener.pid
+.store.json
+__pycache__/
+*.pyc
+.venv/
+listener.log
