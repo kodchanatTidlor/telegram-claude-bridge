@@ -51,6 +51,18 @@ class Store:
                 return s
         return None
 
+    def get_cursor(self, iterm_session_id) -> int:
+        # Per-session transcript line cursor: how many lines the streamer has
+        # already forwarded, so it never re-sends across turns.
+        return int(self._read().get("cursors", {}).get(iterm_session_id, 0))
+
+    def set_cursor(self, iterm_session_id, n) -> None:
+        data = self._read()
+        cursors = data.get("cursors", {})
+        cursors[iterm_session_id] = int(n)
+        data["cursors"] = cursors
+        self._write(data)
+
     def get_offset(self) -> int:
         return int(self._read().get("offset", 0))
 
