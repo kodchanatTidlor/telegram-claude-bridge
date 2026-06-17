@@ -14,6 +14,8 @@
 
 ### 1. สร้าง Telegram Bot เพื่อเอา Token
 1. เปิด Telegram คุยกับ **@BotFather**
+<img width="434" height="86" alt="S__21749764_0" src="https://github.com/user-attachments/assets/17c48126-52de-4fb5-a25c-93cd95299164" />
+
 2. พิมพ์ `/newbot`
 3. ตั้งชื่อ bot และ username (ลงท้าย `bot`)
 4. BotFather จะส่ง **token** กลับมา หน้าตาเช่น `123456789:ABCdef...` → เก็บไว้
@@ -21,6 +23,9 @@
 
 ### 2. หา Chat ID ของตัวเอง
 คุยกับ **@userinfobot** ใน Telegram → มันบอก `Id` ของคุณ (ตัวเลขล้วน) = chat id
+
+<img width="436" height="68" alt="S__21749765_0" src="https://github.com/user-attachments/assets/336a6d86-3eee-4ba4-8446-65903746fdba" />
+
 
 ### 3. กด Start บอทที่เพิ่งสร้าง (สำคัญ)
 เปิดแชตกับ bot ของคุณ กด **Start** 1 ครั้ง — จำเป็น เพราะ Telegram ไม่ยอมให้ bot
