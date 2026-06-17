@@ -137,6 +137,7 @@ python bridgectl.py status    # เช็กสถานะ: listener RUNNING/ST
 |--------|--------|
 | `python bridgectl.py serve` | เริ่ม bridge (foreground, เห็น log, Ctrl+C หยุด) |
 | `python bridgectl.py status` | เช็กสถานะ listener + recap |
+| `python bridgectl.py update` | ดึงโค้ดล่าสุดจาก GitHub (git pull) + อัปเดต deps (restart serve หลังอัปเดต) |
 
 ## แก้ปัญหา
 - **recap ไม่เด้งเข้า Telegram** → เช็ก `status` ว่า listener RUNNING; เช็กว่าลง Stop hook แล้ว (เปิด `/hooks` 1 ครั้ง)

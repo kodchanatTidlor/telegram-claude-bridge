@@ -44,11 +44,25 @@ def cmd_status(cfg) -> str:
     return f"listener: {'RUNNING' if live else 'STOPPED'} | recap: {recap}"
 
 
+def cmd_update(cfg) -> None:
+    # Pull latest code + refresh deps. Restart `serve` afterwards to load it.
+    print("pulling latest...")
+    if subprocess.run(["git", "-C", str(BASE_DIR), "pull", "--ff-only"]).returncode:
+        print("git pull failed (stash/commit local changes first).")
+        return
+    print("updating dependencies...")
+    subprocess.run([_python(), "-m", "pip", "install", "-q", "-r",
+                    str(BASE_DIR / "requirements.txt")])
+    print("updated. restart `python bridgectl.py serve` to load the new code.")
+
+
 def main() -> int:
     cfg = load_config()
     arg = sys.argv[1] if len(sys.argv) > 1 else "status"
     if arg == "serve":
         cmd_serve(cfg)
+    elif arg == "update":
+        cmd_update(cfg)
     else:
         print(cmd_status(cfg))
     return 0
