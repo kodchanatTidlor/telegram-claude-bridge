@@ -1,5 +1,6 @@
 from bridge.config import Config
 from bridge.store import Store
+from bridge import gate
 import listener
 
 
@@ -7,7 +8,8 @@ def make_cfg(tmp_path):
     return Config(bot_token="t", allowed_chat_id=1, poll_timeout=1,
                   store_path=tmp_path / "s.json",
                   flag_path=tmp_path / ".enabled",
-                  pid_path=tmp_path / ".pid")
+                  pid_path=tmp_path / ".pid",
+                  gate_dir=tmp_path / ".gate")
 
 
 def msg(text, chat_id=1, reply_to=None):
@@ -57,3 +59,28 @@ def test_reply_to_unknown_recap_falls_back_to_active(tmp_path):
     store.upsert_session("sidA", 11, "/a", 10)
     session, _ = listener.resolve_target(cfg, store, msg("hi", reply_to=999))
     assert session["iterm_session_id"] == "sidA"
+
+
+def test_gate_reply_consumes_pending(tmp_path):
+    cfg = make_cfg(tmp_path)
+    gate.register_pending(cfg, 50, {"kind": "permission"})
+    assert listener.handle_gate_reply(cfg, msg("y", reply_to=50)) is True
+    assert gate.take_answer(cfg, 50) == "y"          # handed to the hook
+
+
+def test_gate_reply_ignores_non_reply(tmp_path):
+    cfg = make_cfg(tmp_path)
+    gate.register_pending(cfg, 50, {"kind": "permission"})
+    assert listener.handle_gate_reply(cfg, msg("y")) is False
+
+
+def test_gate_reply_ignores_reply_without_pending(tmp_path):
+    cfg = make_cfg(tmp_path)
+    assert listener.handle_gate_reply(cfg, msg("y", reply_to=12345)) is False
+
+
+def test_gate_reply_drops_non_allowlisted(tmp_path):
+    cfg = make_cfg(tmp_path)
+    gate.register_pending(cfg, 50, {"kind": "permission"})
+    assert listener.handle_gate_reply(cfg, msg("y", reply_to=50,
+                                               chat_id=999)) is False

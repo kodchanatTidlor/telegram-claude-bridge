@@ -1,5 +1,5 @@
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -13,6 +13,8 @@ class Config:
     store_path: Path
     flag_path: Path
     pid_path: Path
+    # Defaulted so existing call sites / test fixtures need no change.
+    gate_dir: Path = field(default=BASE_DIR / ".gate")
 
 
 def _load_dotenv(path: Path) -> None:
@@ -41,6 +43,7 @@ def load_config() -> Config:
         store_path=Path(os.environ.get("STORE_PATH", BASE_DIR / ".store.json")),
         flag_path=BASE_DIR / ".enabled",
         pid_path=BASE_DIR / ".listener.pid",
+        gate_dir=BASE_DIR / ".gate",
     )
 
 

@@ -4,6 +4,7 @@ import sys
 import time
 
 from bridge.config import is_allowed, load_config
+from bridge.gate import resolve_pending
 from bridge.iterm import should_inject, strip_session_prefix
 from bridge.store import Store
 from bridge.telegram import get_updates, send_message
@@ -13,6 +14,23 @@ NOT_RUNNING = "claude not running in this session — cancelled"
 
 def _log(msg: str) -> None:
     print(f"[{time.strftime('%H:%M:%S')}] {msg}", flush=True)
+
+
+def handle_gate_reply(cfg, update) -> bool:
+    """If this is an allowlisted REPLY to a pending gate prompt, hand the raw
+    text to the waiting hook and report True (consumed). Otherwise False, so
+    the normal inject path runs."""
+    message = update.get("message") or {}
+    sender = (message.get("from") or {}).get("id")
+    if sender is None or not is_allowed(cfg, sender):
+        return False
+    reply = message.get("reply_to_message")
+    if not reply:
+        return False
+    rid = reply.get("message_id")
+    if rid is None:
+        return False
+    return resolve_pending(cfg, rid, message.get("text", ""))
 
 
 def resolve_target(cfg, store, update):
@@ -82,6 +100,9 @@ async def _amain(connection) -> None:
 
             for update in updates:
                 store.set_offset(update["update_id"] + 1)
+                if handle_gate_reply(cfg, update):
+                    _log("  gate reply -> answered hook")
+                    continue
                 target = resolve_target(cfg, store, update)
                 if target is None:
                     continue
