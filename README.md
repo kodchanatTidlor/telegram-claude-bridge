@@ -19,7 +19,7 @@
 > 5. ถามผมขอ **Telegram Bot Token** กับ **Chat ID** (บอกวิธีหาให้ผมด้วย ถ้าผมยังไม่มี) แล้วสร้างไฟล์ `.env` จาก `.env.example` ใส่ค่า `BOT_TOKEN` และ `ALLOWED_CHAT_ID` (ห้าม commit ไฟล์นี้)
 > 6. ลง Stop hook แบบ user scope ใน `~/.claude/settings.json` ให้ยิง `recap_hook.py` ด้วย venv python (merge เข้า hooks เดิม อย่าทับ) — command คือ `$HOME/telegram-claude-bridge/.venv/bin/python $HOME/telegram-claude-bridge/recap_hook.py`
 > 7. บอกผมให้เปิด iTerm2 Python API เอง (Settings → General → Magic → Enable Python API) เพราะต้องกดใน GUI
-> 8. รัน `python bridgectl.py status` เช็กความพร้อม แล้วบอกผมว่าต้องรัน `python bridgectl.py serve` ใน iTerm2 เพื่อเริ่มใช้งาน
+> 8. รัน `python3 ~/telegram-claude-bridge/bridgectl.py status` เช็กความพร้อม แล้วบอกผมว่าต้องรัน `python3 ~/telegram-claude-bridge/bridgectl.py serve` ใน iTerm2 เพื่อเริ่มใช้งาน
 >
 > ทำตามทีละขั้น เช็กผลแต่ละขั้นก่อนไปต่อ
 
@@ -107,16 +107,15 @@ POLL_TIMEOUT=50
 bridge รันแบบ foreground อย่างเดียว — เปิดทิ้งไว้ใน iTerm2 tab นึง เห็น log สดๆ
 
 ```bash
-cd ~/telegram-claude-bridge
-python bridgectl.py serve     # เริ่มทำงาน เห็น log ในจอนี้ — Ctrl+C เพื่อหยุด
-python bridgectl.py status    # เช็กสถานะ: listener RUNNING/STOPPED | recap ON/OFF
+python3 ~/telegram-claude-bridge/bridgectl.py serve     # เริ่มทำงาน เห็น log ในจอนี้ — Ctrl+C เพื่อหยุด
+python3 ~/telegram-claude-bridge/bridgectl.py status    # เช็กสถานะ: listener RUNNING/STOPPED | recap ON/OFF
 ```
 
 ปิด terminal หรือ Ctrl+C = bridge หยุด และ recap ปิดอัตโนมัติ
 (Stop hook จะส่ง recap เฉพาะตอน listener ทำงานอยู่)
 
 ### flow การใช้งาน
-1. `python bridgectl.py serve` ใน iTerm2 (เปิดทิ้งไว้)
+1. `python3 ~/telegram-claude-bridge/bridgectl.py serve` ใน iTerm2 (เปิดทิ้งไว้)
 2. สั่งงาน Claude ใน iTerm2 อีก tab — พองานเสร็จ recap เด้งเข้า Telegram (มี quote prompt + คำตอบ)
 3. **ส่งข้อความเฉยๆ** → เข้า session ล่าสุด (active)
 4. **reply ที่ recap อันใดอันหนึ่ง** → เข้า session ที่ recap นั้นมาจาก (เจาะ session เก่า / หลาย session)
@@ -135,9 +134,9 @@ python bridgectl.py status    # เช็กสถานะ: listener RUNNING/ST
 ## คำสั่งทั้งหมด
 | คำสั่ง | ทำอะไร |
 |--------|--------|
-| `python bridgectl.py serve` | เริ่ม bridge (foreground, เห็น log, Ctrl+C หยุด) |
-| `python bridgectl.py status` | เช็กสถานะ listener + recap |
-| `python bridgectl.py update` | ดึงโค้ดล่าสุดจาก GitHub (git pull) + อัปเดต deps (restart serve หลังอัปเดต) |
+| `python3 ~/telegram-claude-bridge/bridgectl.py serve` | เริ่ม bridge (foreground, เห็น log, Ctrl+C หยุด) |
+| `python3 ~/telegram-claude-bridge/bridgectl.py status` | เช็กสถานะ listener + recap |
+| `python3 ~/telegram-claude-bridge/bridgectl.py update` | ดึงโค้ดล่าสุดจาก GitHub (git pull) + อัปเดต deps (restart serve หลังอัปเดต) |
 
 ## แก้ปัญหา
 - **recap ไม่เด้งเข้า Telegram** → เช็ก `status` ว่า listener RUNNING; เช็กว่าลง Stop hook แล้ว (เปิด `/hooks` 1 ครั้ง)
