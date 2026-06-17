@@ -3,15 +3,14 @@ import os
 import sys
 
 from bridge.config import BASE_DIR, load_config
-from bridge.recap import build_recap
+from bridge.recap import build_notify
 from bridge.store import Store
 from bridge.telegram import send_message
-from bridge.transcript import parse_transcript
 
 
 def _listener_alive(pid_path) -> bool:
-    # recap is sent only when the listener is up — otherwise a reply could
-    # never be delivered. The listener writes its pid here while running.
+    # Mirror recap_hook: only notify when the listener is up, otherwise a
+    # reply could never be delivered. Listener writes its pid here.
     try:
         pid = int(pid_path.read_text().strip())
     except (FileNotFoundError, ValueError):
@@ -25,7 +24,7 @@ def _listener_alive(pid_path) -> bool:
     return True
 
 
-def run(stdin_text, env, cfg, store, send_fn, parse_fn) -> int:
+def run(stdin_text, env, cfg, store, send_fn) -> int:
     try:
         if not _listener_alive(cfg.pid_path):
             return 0
@@ -33,30 +32,28 @@ def run(stdin_text, env, cfg, store, send_fn, parse_fn) -> int:
         if not iterm_session_id:
             return 0
         payload = json.loads(stdin_text or "{}")
-        transcript_path = payload.get("transcript_path", "")
+        message = payload.get("message", "")
         cwd = payload.get("cwd", "")
-        user_prompt, assistant_text = parse_fn(transcript_path)
-        text = build_recap(user_prompt, assistant_text)
+        text = build_notify(message)
         message_id = send_fn(cfg, text)
         job_pid = env.get("JOB_PID")
+        # Bind message_id to the session so a Telegram reply routes the answer
+        # straight back into the waiting prompt (session_by_recap).
         store.upsert_session(iterm_session_id,
                              int(job_pid) if job_pid else None,
                              cwd, message_id)
     except Exception as exc:  # never block Claude
-        sys.stderr.write(f"recap_hook error: {exc}\n")
+        sys.stderr.write(f"notify_hook error: {exc}\n")
     return 0
 
 
 def main() -> int:
-    # Cheap pid-file check before loading config, so a stopped listener or
-    # missing .env never makes the hook do work or crash on Claude stop.
     pid_path = BASE_DIR / ".listener.pid"
     if not _listener_alive(pid_path):
         return 0
     cfg = load_config()
     store = Store(cfg.store_path)
-    return run(sys.stdin.read(), dict(os.environ), cfg, store,
-               send_message, parse_transcript)
+    return run(sys.stdin.read(), dict(os.environ), cfg, store, send_message)
 
 
 if __name__ == "__main__":
