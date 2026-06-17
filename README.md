@@ -12,12 +12,13 @@
 
 > ช่วย setup telegram-claude-bridge ที่ `~/telegram-claude-bridge` ให้ใช้งานได้จนจบ ตามขั้นตอนนี้ ทำทีละขั้นและถามผมเมื่อต้องการข้อมูล:
 >
-> 1. เช็กว่ามี iTerm2 ติดตั้งหรือยัง (`ls /Applications/iTerm.app` หรือ `brew list --cask iterm2`) ถ้าไม่มี ให้ติดตั้งด้วย `brew install --cask iterm2`
-> 2. เข้าโฟลเดอร์ `~/telegram-claude-bridge` สร้าง venv และลง dependency: `python3 -m venv .venv && .venv/bin/pip install -r requirements.txt`
-> 3. ถามผมขอ **Telegram Bot Token** กับ **Chat ID** (บอกวิธีหาให้ผมด้วย ถ้าผมยังไม่มี) แล้วสร้างไฟล์ `.env` จาก `.env.example` ใส่ค่า `BOT_TOKEN` และ `ALLOWED_CHAT_ID` (ห้าม commit ไฟล์นี้)
-> 4. ลง Stop hook แบบ user scope ใน `~/.claude/settings.json` ให้ยิง `recap_hook.py` ด้วย venv python (merge เข้า hooks เดิม อย่าทับ) — command คือ `$HOME/telegram-claude-bridge/.venv/bin/python $HOME/telegram-claude-bridge/recap_hook.py`
-> 5. บอกผมให้เปิด iTerm2 Python API เอง (Settings → General → Magic → Enable Python API) เพราะต้องกดใน GUI
-> 6. รัน `python bridgectl.py status` เช็กความพร้อม แล้วบอกผมว่าต้องรัน `python bridgectl.py serve` ใน iTerm2 เพื่อเริ่มใช้งาน
+> 1. Clone repo ไปที่ `~/telegram-claude-bridge` (ถ้ายังไม่มี): `git clone https://github.com/kodchanatTidlor/telegram-claude-bridge.git ~/telegram-claude-bridge`
+> 2. เช็กว่ามี iTerm2 ติดตั้งหรือยัง (`ls /Applications/iTerm.app` หรือ `brew list --cask iterm2`) ถ้าไม่มี ให้ติดตั้งด้วย `brew install --cask iterm2`
+> 3. เข้าโฟลเดอร์ `~/telegram-claude-bridge` สร้าง venv และลง dependency: `python3 -m venv .venv && .venv/bin/pip install -r requirements.txt`
+> 4. ถามผมขอ **Telegram Bot Token** กับ **Chat ID** (บอกวิธีหาให้ผมด้วย ถ้าผมยังไม่มี) แล้วสร้างไฟล์ `.env` จาก `.env.example` ใส่ค่า `BOT_TOKEN` และ `ALLOWED_CHAT_ID` (ห้าม commit ไฟล์นี้)
+> 5. ลง Stop hook แบบ user scope ใน `~/.claude/settings.json` ให้ยิง `recap_hook.py` ด้วย venv python (merge เข้า hooks เดิม อย่าทับ) — command คือ `$HOME/telegram-claude-bridge/.venv/bin/python $HOME/telegram-claude-bridge/recap_hook.py`
+> 6. บอกผมให้เปิด iTerm2 Python API เอง (Settings → General → Magic → Enable Python API) เพราะต้องกดใน GUI
+> 7. รัน `python bridgectl.py status` เช็กความพร้อม แล้วบอกผมว่าต้องรัน `python bridgectl.py serve` ใน iTerm2 เพื่อเริ่มใช้งาน
 >
 > ทำตามทีละขั้น เช็กผลแต่ละขั้นก่อนไปต่อ
 
