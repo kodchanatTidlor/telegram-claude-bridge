@@ -19,6 +19,29 @@ def test_is_command():
     assert not commands.is_command("/unknown")
 
 
+def test_usage_command_registered():
+    assert commands.is_command("/usage") and commands.resolve("/usage") == "/usage"
+
+
+def test_build_usage_shows_5h_tokens(tmp_path):
+    import json
+    from datetime import datetime, timezone
+    proj = tmp_path / "projects" / "p"
+    proj.mkdir(parents=True)
+    now = 2_000_000.0
+    row = {"timestamp": datetime.fromtimestamp(now - 60, timezone.utc).isoformat(),
+           "message": {"role": "assistant", "model": "claude-opus-4-8",
+                       "usage": {"output_tokens": 1500, "input_tokens": 0,
+                                 "cache_read_input_tokens": 0,
+                                 "cache_creation_input_tokens": 0}}}
+    (proj / "a.jsonl").write_text(json.dumps(row))
+    cfg = Config(bot_token="t", allowed_chat_id=1, poll_timeout=1,
+                 store_path=tmp_path / "s.json", flag_path=tmp_path / ".e",
+                 pid_path=tmp_path / ".p", projects_dir=tmp_path / "projects")
+    out = commands.build_usage(cfg, now=now)
+    assert "Usage" in out and "1\\.5k" in out and "last 5h" in out
+
+
 def test_resolve_button_labels_to_commands():
     assert commands.resolve("📊 Status") == "/status"
     assert commands.resolve("🛑 Stop") == "/cancel"

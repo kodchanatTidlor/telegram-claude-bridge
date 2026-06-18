@@ -16,6 +16,8 @@ class Config:
     # Defaulted so existing call sites / test fixtures need no change.
     gate_dir: Path = field(default=BASE_DIR / ".gate")
     busy_path: Path = field(default=BASE_DIR / ".busy")
+    # Claude Code transcripts — same source ccusage reads for token usage.
+    projects_dir: Path = field(default=Path.home() / ".claude" / "projects")
 
 
 def _load_dotenv(path: Path) -> None:
@@ -46,6 +48,7 @@ def load_config() -> Config:
         pid_path=BASE_DIR / ".listener.pid",
         gate_dir=BASE_DIR / ".gate",
         busy_path=BASE_DIR / ".busy",
+        projects_dir=Path.home() / ".claude" / "projects",
     )
 
 

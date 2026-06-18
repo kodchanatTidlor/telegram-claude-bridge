@@ -1,15 +1,36 @@
+import time
+
 from bridge.busy import is_busy
 from bridge.recap import escape_md_v2
-from bridge.usage import latest_model
+from bridge.usage import latest_model, usage_since
 
 # Bridge-local commands: handled by the listener, never injected into Claude.
 COMMANDS = {
     "/status": "bridge status + session menu",
+    "/usage": "token usage in the last 5h (all sessions)",
     "/screen": "snapshot the active session's screen",
     "/cancel": "stop Claude (send ESC)",
     "/help": "list bridge commands",
 }
 SCREEN_LINES = 40
+USAGE_WINDOW = 5 * 3600   # the ~5-hour quota block ccusage tracks
+
+
+def _k(n) -> str:
+    return f"{n / 1000:.1f}k" if n >= 1000 else str(n)
+
+
+def build_usage(cfg, now=None) -> str:
+    now = time.time() if now is None else now
+    u = usage_since(cfg.projects_dir, now - USAGE_WINDOW)
+    return "\n".join([
+        "📊 *Usage* — last 5h \\(all sessions\\)",
+        f"output: {escape_md_v2(_k(u['output']))}",
+        f"input: {escape_md_v2(_k(u['input']))}",
+        f"cache: {escape_md_v2(_k(u['cache_read'] + u['cache_creation']))}",
+        f"*total: {escape_md_v2(_k(u['total']))}* · "
+        f"{u['messages']} msgs",
+    ])
 # Reply-keyboard buttons send their label verbatim, so raw "/status" looks odd.
 # Show a friendly label and map it back to the command.
 # Order = reply-keyboard layout (left→right); Stop sits far right.

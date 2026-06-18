@@ -245,6 +245,8 @@ async def handle_bridge_command(cfg, store, app, update) -> bool:
         await _prune_dead(app, store)   # show only live sessions
         await asyncio.to_thread(send_message, cfg, commands.build_status(cfg, store),
                                 reply_markup=commands.dashboard_keyboard(store))
+    elif cmd == "/usage":
+        await asyncio.to_thread(send_message, cfg, commands.build_usage(cfg))
     elif cmd == "/screen":
         active = store.active_session()
         text = await _grab_screen(app, active["iterm_session_id"]) \
