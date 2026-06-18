@@ -71,10 +71,17 @@ def test_dashboard_has_session_and_new_buttons(tmp_path):
     store.upsert_session("w0t0p0:AAAA-D33B", 1, "/a/heygoody-web", 5)
     kb = commands.dashboard_keyboard(store)["inline_keyboard"]
     top = [b["callback_data"] for b in kb[0]]
-    assert top == ["refresh", "newmenu"]                  # same row
+    assert top == ["refresh", "reload", "newmenu"]        # same row
     sw = kb[1][0]
     assert "heygoody-web" in sw["text"] and sw["text"].endswith("D33B")
     assert sw["callback_data"] == "sw:w0t0p0:AAAA-D33B"   # full sid
+
+
+def test_dashboard_top_row_has_reload(tmp_path):
+    store = Store(tmp_path / "s.json")
+    top = [b["callback_data"]
+           for b in commands.dashboard_keyboard(store)["inline_keyboard"][0]]
+    assert top == ["refresh", "reload", "newmenu"]
 
 
 def test_distinct_cwds_dedupes(tmp_path):

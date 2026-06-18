@@ -56,6 +56,12 @@ def _is_shell(job_name) -> bool:
     return job_name.rsplit("/", 1)[-1].lower() in SHELL_JOB_NAMES
 
 
+def _reexec():
+    # Reload: replace this process with a fresh listener (same terminal, same
+    # pid) — picks up edited code without a manual Ctrl+C / re-serve.
+    os.execv(sys.executable, [sys.executable, os.path.abspath(__file__)])
+
+
 async def _grab_screen(app, sid):
     """Read the visible text of a session's terminal (the live TUI panel)."""
     await app.async_refresh()
@@ -108,7 +114,8 @@ async def handle_callback(cfg, store, app, connection, update,
                           text_fn=edit_message_text,
                           send_fn=send_message,
                           open_fn=_open_session,
-                          prune_fn=_prune_dead) -> bool:
+                          prune_fn=_prune_dead,
+                          exec_fn=_reexec) -> bool:
     """Inline-button taps. Dashboard buttons (sw:/new:/newmenu/back) are handled
     here; bare callback_data (y/n/index) routes to the pending gate."""
     cq = update.get("callback_query")
@@ -127,6 +134,10 @@ async def handle_callback(cfg, store, app, connection, update,
         text_fn(cfg, mid, commands.build_status(cfg, store),
                 commands.dashboard_keyboard(store))
         answer_fn(cfg, cq_id, "refreshed")
+    elif data == "reload":
+        answer_fn(cfg, cq_id, "reloading…")
+        send_fn(cfg, "♻️ reloading bridge…")
+        exec_fn()   # replaces the process (re-exec); never returns
     elif data == "newmenu":
         markup_fn(cfg, mid, commands.newmenu_keyboard(store))
         answer_fn(cfg, cq_id, "pick a folder")

@@ -95,7 +95,7 @@ def callback(data, on_message=60, chat_id=1, cq_id="cq1"):
 
 
 def _run_cb(cfg, store, update, new_sid="newGUID"):
-    opened, pruned, sent = [], [], []
+    opened, pruned, sent, reloaded = [], [], [], []
 
     async def fake_open(conn, cwd):
         opened.append(cwd)
@@ -110,8 +110,9 @@ def _run_cb(cfg, store, update, new_sid="newGUID"):
         markup_fn=lambda c, m, mk=None: markups.append(mk),
         text_fn=lambda c, m, t, mk=None: texts.append(t),
         send_fn=lambda c, t: sent.append(t) or 777,
-        open_fn=fake_open, prune_fn=fake_prune))
-    return ok, answered, markups, texts, opened, pruned, sent
+        open_fn=fake_open, prune_fn=fake_prune,
+        exec_fn=lambda: reloaded.append(True)))
+    return ok, answered, markups, texts, opened, pruned, sent, reloaded
 
 
 def test_callback_gate_resolves_and_strips(tmp_path):
@@ -137,8 +138,8 @@ def test_callback_new_opens_session_at_cwd(tmp_path):
     cfg = make_cfg(tmp_path)
     store = Store(cfg.store_path)
     store.upsert_session("s1", 1, "/proj/alpha", 5)
-    ok, _, _, _, opened, _, sent = _run_cb(cfg, store, callback("new:0"),
-                                           new_sid="freshGUID")
+    ok, _, _, _, opened, _, sent, _ = _run_cb(cfg, store, callback("new:0"),
+                                              new_sid="freshGUID")
     assert ok and opened == ["/proj/alpha"]
     assert sent and "New Claude" in sent[0]                  # binding msg sent
     a = store.active_session()
@@ -225,10 +226,18 @@ def test_callback_refresh_prunes_and_rerenders(tmp_path):
     cfg = make_cfg(tmp_path)
     store = Store(cfg.store_path)
     store.upsert_session("s1", 1, "/a", 5)
-    ok, answered, _, texts, _, pruned, _ = _run_cb(cfg, store,
-                                                   callback("refresh"))
+    ok, answered, _, texts, _, pruned, _, _ = _run_cb(cfg, store,
+                                                      callback("refresh"))
     assert ok and pruned == [True]      # dead sessions dropped
     assert texts and "Bridge" in texts[0]   # dashboard re-rendered
+
+
+def test_callback_reload_reexecs(tmp_path):
+    cfg = make_cfg(tmp_path)
+    ok, _, _, _, _, _, sent, reloaded = _run_cb(cfg, Store(cfg.store_path),
+                                                callback("reload"))
+    assert ok and reloaded == [True]              # process re-exec triggered
+    assert sent and "reloading" in sent[0]
 
 
 def test_callback_non_reply_ignored(tmp_path):

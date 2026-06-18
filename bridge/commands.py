@@ -76,6 +76,7 @@ def dashboard_keyboard(store):
     # Inline keyboard on the /status message: switch session (sw:<sid>) + open
     # a new one (newmenu).
     rows = [[{"text": "🔄 Refresh", "callback_data": "refresh"},
+             {"text": "♻️ Reload", "callback_data": "reload"},
              {"text": "➕ New", "callback_data": "newmenu"}]]
     rows += [[{"text": f"📁 {_base(s.get('cwd'))} ·{_tag(s['iterm_session_id'])}",
                "callback_data": f"sw:{s['iterm_session_id']}"}]
