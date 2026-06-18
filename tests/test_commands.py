@@ -33,18 +33,6 @@ def test_command_keyboard_is_commands_only(tmp_path):
     assert all("📁" not in label for label in labels)        # no session buttons
 
 
-def test_screen_block_fences_and_escapes():
-    out = commands.screen_block("a`b\\c")
-    assert out == "```\na\\`b\\\\c\n```"        # fenced + ` and \ escaped
-
-
-def test_screen_block_clips_to_last_lines():
-    out = commands.screen_block("\n".join(str(i) for i in range(100)))
-    lines = out.splitlines()[1:-1]              # strip the ``` fences
-    assert lines[-1] == "99" and len(lines) == commands.SCREEN_LINES
-    assert "59" not in lines                    # head dropped (kept 60..99)
-
-
 
 
 def test_status_reports_busy_session_and_model(tmp_path):

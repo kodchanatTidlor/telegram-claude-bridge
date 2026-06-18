@@ -1,6 +1,7 @@
 import asyncio
 import os
 import shlex
+import subprocess
 import sys
 import time
 
@@ -12,7 +13,10 @@ from bridge.iterm import SHELL_JOB_NAMES, should_inject, strip_session_prefix
 from bridge.store import Store
 from bridge.telegram import (answer_callback, delete_message,
                              edit_message_text, edit_reply_markup, get_updates,
-                             send_chat_action, send_message, set_my_commands)
+                             send_chat_action, send_message, send_photo,
+                             set_my_commands)
+
+SHOT_PATH = "/tmp/telegram-bridge-screen.png"
 
 ESC = "\x1b"   # interrupt Claude's current generation (soft stop)
 
@@ -62,19 +66,21 @@ def _reexec():
     os.execv(sys.executable, [sys.executable, os.path.abspath(__file__)])
 
 
-async def _grab_screen(app, sid):
-    """Read the visible text of a session's terminal (the live TUI panel)."""
+async def _capture_screen(app, sid, path=SHOT_PATH):
+    """Bring the session's window to the front, then screenshot the display —
+    so colors/graphics (e.g. /usage % bars) are preserved as an image."""
     await app.async_refresh()
     target = strip_session_prefix(sid)
     for w in app.windows:
         for t in w.tabs:
             for s in t.sessions:
-                if strip_session_prefix(s.session_id) != target:
-                    continue
-                c = await s.async_get_screen_contents()
-                rows = [c.line(i).string for i in range(c.number_of_lines)]
-                return "\n".join(rows)
-    return None
+                if strip_session_prefix(s.session_id) == target:
+                    await s.async_activate()
+    await asyncio.sleep(0.4)   # let the window come forward
+    await asyncio.to_thread(subprocess.run,
+                            ["screencapture", "-x", "-o", path],
+                            check=False)
+    return path
 
 
 def _clear_screens(cfg, store) -> None:
@@ -82,14 +88,14 @@ def _clear_screens(cfg, store) -> None:
         delete_message(cfg, mid)
 
 
-def _post_screen(cfg, store, text) -> None:
-    # Ephemeral: drop the previous snapshot, post the new one, remember it so
+def _post_shot(cfg, store, path) -> None:
+    # Ephemeral: drop the previous snapshot, post the new photo, remember it so
     # the next user message clears it.
     _clear_screens(cfg, store)
-    if text is None:
-        send_message(cfg, "⚠️ session not found")
+    if not os.path.exists(path):
+        send_message(cfg, "⚠️ screenshot failed (grant Screen Recording?)")
         return
-    store.add_screen(send_message(cfg, commands.screen_block(text)))
+    store.add_screen(send_photo(cfg, path, silent=True))
 
 
 async def _prune_dead(app, store) -> None:
@@ -246,9 +252,11 @@ async def handle_bridge_command(cfg, store, app, update) -> bool:
                                 reply_markup=commands.dashboard_keyboard(store))
     elif cmd == "/screen":
         active = store.active_session()
-        text = await _grab_screen(app, active["iterm_session_id"]) \
-            if active else None
-        await asyncio.to_thread(_post_screen, cfg, store, text)
+        if active:
+            path = await _capture_screen(app, active["iterm_session_id"])
+            await asyncio.to_thread(_post_shot, cfg, store, path)
+        else:
+            await asyncio.to_thread(send_message, cfg, "⚠️ no active session")
     else:   # /help
         await asyncio.to_thread(send_message, cfg, commands.build_help())
     return True

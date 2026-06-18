@@ -9,7 +9,6 @@ COMMANDS = {
     "/cancel": "stop Claude (send ESC)",
     "/help": "list bridge commands",
 }
-SCREEN_LINES = 40
 # Reply-keyboard buttons send their label verbatim, so raw "/status" looks odd.
 # Show a friendly label and map it back to the command.
 # Order = reply-keyboard layout (left→right); Stop sits far right.
@@ -58,9 +57,8 @@ def build_status(cfg, store) -> str:
         f"model: {escape_md_v2(model or '?')}",
         f"pending: {_pending_count(cfg)} · sessions: {len(store.sessions())}",
         "",
-        escape_md_v2("🔄 Refresh = อัปเดตรายการ + ล้าง session ที่ปิด"),
-        escape_md_v2("♻️ Reload = restart bridge (โหลดโค้ดใหม่)"),
-        escape_md_v2("📁 = สลับ session · ➕ New = เปิด session ใหม่"),
+        escape_md_v2("🔄 อัปเดต · ♻️ restart bridge"),
+        escape_md_v2("📁 สลับ · ➕ เปิดใหม่"),
     ])
 
 
@@ -86,14 +84,6 @@ def dashboard_keyboard(store):
                "callback_data": f"sw:{s['iterm_session_id']}"}]
              for s in store.sessions()]
     return {"inline_keyboard": rows}
-
-
-def screen_block(text) -> str:
-    # Wrap the terminal snapshot in a MarkdownV2 code block so monospace keeps
-    # the panel's layout. Inside a pre block only ` and \ need escaping.
-    lines = (text or "").splitlines()[-SCREEN_LINES:]
-    body = "\n".join(lines).replace("\\", "\\\\").replace("`", "\\`")
-    return f"```\n{body or '(blank)'}\n```"
 
 
 def new_session_msg(cwd, sid) -> str:

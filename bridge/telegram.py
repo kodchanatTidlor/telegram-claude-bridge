@@ -91,6 +91,25 @@ def set_my_commands(cfg, commands) -> None:
     _best_effort("setMyCommands", lambda c: {"commands": cmds})(cfg)
 
 
+def send_photo(cfg, image_path, silent=False) -> int:
+    img = open(image_path, "rb").read()
+    files = {"photo": ("screen.png", img, "image/png")}
+    data = {"chat_id": str(cfg.allowed_chat_id)}
+    if silent:
+        data["disable_notification"] = "true"
+    for _ in range(2):
+        resp = httpx.post(_url(cfg, "sendPhoto"), data=data, files=files,
+                          timeout=30)
+        if resp.status_code == 429:
+            time.sleep(resp.json().get("parameters", {}).get("retry_after", 1))
+            continue
+        body = resp.json()
+        if not body.get("ok"):
+            raise RuntimeError(f"telegram sendPhoto failed: {body}")
+        return body["result"]["message_id"]
+    raise RuntimeError("telegram sendPhoto failed after retry")
+
+
 def get_updates(cfg, offset) -> list:
     params = {"offset": offset, "timeout": cfg.poll_timeout}
     resp = httpx.get(_url(cfg, "getUpdates"), params=params,
