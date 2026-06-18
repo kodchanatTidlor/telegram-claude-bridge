@@ -1,3 +1,5 @@
+import asyncio
+
 from bridge.config import Config
 from bridge.store import Store
 from bridge import gate
@@ -84,3 +86,115 @@ def test_gate_reply_drops_non_allowlisted(tmp_path):
     gate.register_pending(cfg, 50, {"kind": "permission"})
     assert listener.handle_gate_reply(cfg, msg("y", reply_to=50,
                                                chat_id=999)) is False
+
+
+def callback(data, on_message=60, chat_id=1, cq_id="cq1"):
+    return {"callback_query": {"id": cq_id, "from": {"id": chat_id},
+                               "data": data,
+                               "message": {"message_id": on_message}}}
+
+
+def _run_cb(cfg, store, update, new_sid="newGUID"):
+    opened, pruned, sent = [], [], []
+
+    async def fake_open(conn, cwd):
+        opened.append(cwd)
+        return new_sid
+
+    async def fake_prune(app, st):
+        pruned.append(True)
+    answered, markups, texts = [], [], []
+    ok = asyncio.run(listener.handle_callback(
+        cfg, store, "APP", "CONN", update,
+        answer_fn=lambda c, i, t="": answered.append(t),
+        markup_fn=lambda c, m, mk=None: markups.append(mk),
+        text_fn=lambda c, m, t, mk=None: texts.append(t),
+        send_fn=lambda c, t: sent.append(t) or 777,
+        open_fn=fake_open, prune_fn=fake_prune))
+    return ok, answered, markups, texts, opened, pruned, sent
+
+
+def test_callback_gate_resolves_and_strips(tmp_path):
+    cfg = make_cfg(tmp_path)
+    store = Store(cfg.store_path)
+    gate.register_pending(cfg, 60, {"kind": "permission"})
+    ok, answered, markups, *_ = _run_cb(cfg, store, callback("y"))
+    assert ok is True
+    assert gate.take_answer(cfg, 60) == "y"
+    assert markups == [None]                     # keyboard stripped
+
+
+def test_callback_switch_sets_active(tmp_path):
+    cfg = make_cfg(tmp_path)
+    store = Store(cfg.store_path)
+    store.upsert_session("w0:AAAA", 1, "/a", 5)
+    store.upsert_session("w1:BBBB", 2, "/b", 6)   # active now BBBB
+    _run_cb(cfg, store, callback("sw:w0:AAAA"))
+    assert store.active_session()["iterm_session_id"] == "w0:AAAA"
+
+
+def test_callback_new_opens_session_at_cwd(tmp_path):
+    cfg = make_cfg(tmp_path)
+    store = Store(cfg.store_path)
+    store.upsert_session("s1", 1, "/proj/alpha", 5)
+    ok, _, _, _, opened, _, sent = _run_cb(cfg, store, callback("new:0"),
+                                           new_sid="freshGUID")
+    assert ok and opened == ["/proj/alpha"]
+    assert sent and "New Claude" in sent[0]                  # binding msg sent
+    a = store.active_session()
+    assert a["iterm_session_id"] == "freshGUID"              # bound + active
+    assert a["recap_message_id"] == 777
+
+
+class _FakeSession:
+    def __init__(self, sid, job):
+        self.session_id = sid
+        self._job = job
+
+    async def async_get_variable(self, name):
+        return self._job
+
+
+class _FakeApp:
+    def __init__(self, sessions):
+        tab = type("T", (), {"sessions": sessions})()
+        win = type("W", (), {"tabs": [tab]})()
+        self.windows = [win]
+
+    async def async_refresh(self):
+        pass
+
+
+def test_prune_dead_keeps_only_running_claude(tmp_path):
+    store = Store(tmp_path / "s.json")
+    store.upsert_session("w:live", 1, "/a", 5)    # claude running
+    store.upsert_session("w:shell", 2, "/b", 6)   # claude exited -> zsh
+    store.upsert_session("w:closed", 3, "/c", 7)  # tab gone
+    app = _FakeApp([_FakeSession("live", "claude"),
+                    _FakeSession("shell", "-zsh")])
+    asyncio.run(listener._prune_dead(app, store))
+    assert [s["iterm_session_id"] for s in store.sessions()] == ["w:live"]
+
+
+def test_callback_refresh_prunes_and_rerenders(tmp_path):
+    cfg = make_cfg(tmp_path)
+    store = Store(cfg.store_path)
+    store.upsert_session("s1", 1, "/a", 5)
+    ok, answered, _, texts, _, pruned, _ = _run_cb(cfg, store, callback("refresh"))
+    assert ok and pruned == [True]      # dead sessions dropped
+    assert texts and "Bridge" in texts[0]   # dashboard re-rendered
+
+
+def test_callback_non_reply_ignored(tmp_path):
+    cfg = make_cfg(tmp_path)
+    ok, *_ = _run_cb(cfg, Store(cfg.store_path), msg("hi"))
+    assert ok is False
+
+
+def test_callback_non_allowlisted_rejected(tmp_path):
+    cfg = make_cfg(tmp_path)
+    store = Store(cfg.store_path)
+    gate.register_pending(cfg, 60, {"kind": "permission"})
+    ok, answered, *_ = _run_cb(cfg, store, callback("y", chat_id=999))
+    assert ok is True and answered == ["not allowed"]
+    assert gate.take_answer(cfg, 60) is None
