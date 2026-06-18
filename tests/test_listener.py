@@ -88,6 +88,43 @@ def test_gate_reply_drops_non_allowlisted(tmp_path):
                                                chat_id=999)) is False
 
 
+def gcfg(tmp_path):
+    return Config(bot_token="t", allowed_chat_id=1, poll_timeout=1,
+                  store_path=tmp_path / "s.json", flag_path=tmp_path / ".e",
+                  pid_path=tmp_path / ".p", group_id=-100)
+
+
+def gmsg(text, thread, user=1, chat=-100):
+    return {"message": {"from": {"id": user}, "chat": {"id": chat},
+                        "message_thread_id": thread, "text": text}}
+
+
+def test_group_resolve_target_routes_by_topic(tmp_path):
+    cfg = gcfg(tmp_path)
+    store = Store(cfg.store_path)
+    store.upsert_session("sX", 1, "/p", 5)
+    store.set_topic("sX", 77, "/p")
+    sess, text = listener.resolve_target(cfg, store, gmsg("go", thread=77))
+    assert sess["iterm_session_id"] == "sX" and text == "go"
+
+
+def test_group_rejects_other_member_and_chat(tmp_path):
+    cfg = gcfg(tmp_path)
+    store = Store(cfg.store_path)
+    store.upsert_session("sX", 1, "/p", 5)
+    store.set_topic("sX", 77, "/p")
+    assert listener.resolve_target(cfg, store,
+                                   gmsg("x", 77, user=999)) is None   # other user
+    assert listener.resolve_target(cfg, store,
+                                   gmsg("x", 77, chat=-200)) is None   # other group
+
+
+def test_group_unknown_topic_no_route(tmp_path):
+    cfg = gcfg(tmp_path)
+    store = Store(cfg.store_path)
+    assert listener.resolve_target(cfg, store, gmsg("x", thread=999)) is None
+
+
 def callback(data, on_message=60, chat_id=1, cq_id="cq1"):
     return {"callback_query": {"id": cq_id, "from": {"id": chat_id},
                                "data": data,

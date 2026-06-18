@@ -41,7 +41,7 @@ def test_stream_sends_commentary_and_tool(tmp_path):
     ])
     sent = []
 
-    def send_fn(c, text, silent=False):
+    def send_fn(c, text, silent=False, message_thread_id=None):
         sent.append(text)
         return len(sent)
 
@@ -62,7 +62,7 @@ def test_stream_no_text_sends_nothing(tmp_path):
     sent = []
     payload = json.dumps({"transcript_path": str(tmp_path / "none")})
     code = stream_hook.run(payload, {"ITERM_SESSION_ID": "s1"}, cfg, store,
-                           lambda c, t, silent=False: sent.append(t) or 1,
+                           lambda c, t, silent=False, message_thread_id=None: sent.append(t) or 1,
                            lambda p, c: (None, c))
     assert code == 0 and sent == []
 
@@ -80,7 +80,7 @@ def test_stop_retries_until_final_text_flushes(tmp_path):
 
     payload = json.dumps({"hook_event_name": "Stop", "transcript_path": "x"})
     code = stream_hook.run(payload, {"ITERM_SESSION_ID": "s1"}, cfg, store,
-                           lambda c, t, silent=False: sent.append(t) or 1, text_fn,
+                           lambda c, t, silent=False, message_thread_id=None: sent.append(t) or 1, text_fn,
                            sleep_fn=lambda s: slept.append(s))
     assert code == 0
     assert sent and "final answer" in sent[0]   # retried, then flushed
@@ -94,7 +94,7 @@ def test_silent_midturn_loud_on_stop(tmp_path):
     store = Store(cfg.store_path)
     seen = []
 
-    def send_fn(c, t, silent=False):
+    def send_fn(c, t, silent=False, message_thread_id=None):
         seen.append(silent)
         return 1
 
@@ -119,6 +119,6 @@ def test_non_stop_does_not_retry(tmp_path):
     payload = json.dumps({"hook_event_name": "PostToolUse",
                           "transcript_path": "x"})
     stream_hook.run(payload, {"ITERM_SESSION_ID": "s1"}, cfg, store,
-                    lambda c, t, silent=False: 1, lambda p, c: (None, c),
+                    lambda c, t, silent=False, message_thread_id=None: 1, lambda p, c: (None, c),
                     sleep_fn=lambda s: slept.append(s))
     assert slept == []                           # PostToolUse: single pass

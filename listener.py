@@ -5,7 +5,7 @@ import sys
 import time
 
 from bridge.busy import is_busy
-from bridge import commands, usage_api
+from bridge import commands, group, usage_api
 from bridge.config import is_allowed, load_config
 from bridge.gate import resolve_pending
 from bridge.iterm import SHELL_JOB_NAMES, should_inject, strip_session_prefix
@@ -24,13 +24,22 @@ def _log(msg: str) -> None:
     print(f"[{time.strftime('%H:%M:%S')}] {msg}", flush=True)
 
 
+def _allowed_msg(cfg, message) -> bool:
+    """Sender auth for a message — DM checks the owner id; group mode also
+    requires the message to be in our group (other members rejected)."""
+    frm = (message.get("from") or {}).get("id")
+    if cfg.group_id:
+        return group.is_allowed_group(cfg, (message.get("chat") or {}).get("id"),
+                                      frm)
+    return frm is not None and is_allowed(cfg, frm)
+
+
 def handle_gate_reply(cfg, update) -> bool:
     """If this is an allowlisted REPLY to a pending gate prompt, hand the raw
     text to the waiting hook and report True (consumed). Otherwise False, so
     the normal inject path runs."""
     message = update.get("message") or {}
-    sender = (message.get("from") or {}).get("id")
-    if sender is None or not is_allowed(cfg, sender):
+    if not _allowed_msg(cfg, message):
         return False
     reply = message.get("reply_to_message")
     if not reply:
@@ -122,9 +131,9 @@ async def handle_callback(cfg, store, app, connection, update,
     cq = update.get("callback_query")
     if not cq:
         return False
-    sender = (cq.get("from") or {}).get("id")
     cq_id = cq.get("id")
-    if sender is None or not is_allowed(cfg, sender):
+    auth_msg = {"from": cq.get("from"), "chat": (cq.get("message") or {}).get("chat")}
+    if not _allowed_msg(cfg, auth_msg):
         answer_fn(cfg, cq_id, "not allowed")
         return True
     data = cq.get("data", "")
@@ -187,10 +196,15 @@ def resolve_target(cfg, store, update):
     without iTerm or network.
     """
     message = update.get("message") or {}
-    sender = (message.get("from") or {}).get("id")
-    if sender is None or not is_allowed(cfg, sender):
+    if not _allowed_msg(cfg, message):
         return None
     text = message.get("text", "")
+    # Group mode: the topic identifies the session (route by thread).
+    if cfg.group_id:
+        sid = group.session_of_topic(store, message.get("message_thread_id"))
+        session = next((s for s in store.sessions()
+                        if s["iterm_session_id"] == sid), None)
+        return (session, text) if session else None
     reply = message.get("reply_to_message")
     session = None
     if reply:
@@ -247,8 +261,7 @@ async def handle_bridge_command(cfg, store, app, update) -> bool:
     """Bridge-local commands + session-switch buttons — answered here, never
     injected into Claude. Returns True if consumed."""
     message = update.get("message") or {}
-    sender = (message.get("from") or {}).get("id")
-    if sender is None or not is_allowed(cfg, sender):
+    if not _allowed_msg(cfg, message):
         return False
     cmd = commands.resolve(message.get("text", ""))
     if cmd is None:

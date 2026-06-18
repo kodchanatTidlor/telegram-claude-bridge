@@ -19,7 +19,7 @@ def up(cfg):
 
 
 def fns(sent, deleted):
-    return (lambda c, t: sent.append(t) or (len(sent)),   # send_fn -> id
+    return (lambda c, t, message_thread_id=None: sent.append(t) or (len(sent)),
             lambda c, m: deleted.append(m))                # delete_fn
 
 

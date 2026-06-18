@@ -3,11 +3,12 @@ import os
 import sys
 import time
 
+from bridge import group
 from bridge.config import BASE_DIR, load_config
 from bridge.proc import listener_alive as _listener_alive
 from bridge.store import Store
 from bridge.stream import build_stream_text, new_text
-from bridge.telegram import send_message
+from bridge.telegram import create_forum_topic, send_message
 
 # On Stop the closing assistant message can still be mid-write — poll briefly
 # so the final answer isn't missed (it would otherwise surface late, bundled
@@ -44,12 +45,18 @@ def run(stdin_text, env, cfg, store, send_fn, text_fn, sleep_fn=time.sleep) -> i
         store.set_cursor(sid, new_cursor)
         if text:
             # Mid-turn commentary is silent; only the closing answer (Stop)
-            # makes a sound.
-            mid = send_fn(cfg, build_stream_text(text), silent=not is_stop)
+            # makes a sound. In group mode, post to this session's topic.
+            cwd = payload.get("cwd", "")
+            thread = group.thread_for(
+                cfg, store, sid, cwd,
+                [s["iterm_session_id"] for s in store.sessions()],
+                lambda n: create_forum_topic(cfg, n))
+            mid = send_fn(cfg, build_stream_text(text), silent=not is_stop,
+                          message_thread_id=thread)
             # Bind the message_id so a Telegram reply routes back here.
             job_pid = env.get("JOB_PID")
             store.upsert_session(sid, int(job_pid) if job_pid else None,
-                                 payload.get("cwd", ""), mid)
+                                 cwd, mid)
     except Exception as exc:  # never block Claude
         sys.stderr.write(f"stream_hook error: {exc}\n")
     return 0

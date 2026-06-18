@@ -3,11 +3,12 @@ import os
 import sys
 from functools import partial
 
+from bridge import group
 from bridge.activity import format_activity
 from bridge.config import BASE_DIR, load_config
 from bridge.proc import listener_alive as _listener_alive
 from bridge.store import Store
-from bridge.telegram import delete_message, send_message
+from bridge.telegram import create_forum_topic, delete_message, send_message
 
 # Tool finished / turn ended → remove the status message.
 CLEAR_EVENTS = {"PostToolUse", "Stop"}
@@ -34,8 +35,13 @@ def run(stdin_text, env, cfg, store, send_fn, delete_fn) -> int:
             # Drop any leftover first (e.g. a denied tool never fires
             # PostToolUse), so at most one status is ever live.
             _clear(cfg, store, sid, delete_fn)
+            thread = group.thread_for(
+                cfg, store, sid, payload.get("cwd", ""),
+                [s["iterm_session_id"] for s in store.sessions()],
+                lambda n: create_forum_topic(cfg, n))
             mid = send_fn(cfg, format_activity(payload.get("tool_name", ""),
-                                               payload.get("tool_input")))
+                                               payload.get("tool_input")),
+                          message_thread_id=thread)
             store.set_activity(sid, mid)
         elif event in CLEAR_EVENTS:
             _clear(cfg, store, sid, delete_fn)
