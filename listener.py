@@ -149,6 +149,13 @@ async def handle_callback(cfg, store, app, connection, update,
         store.set_active(data.split(":", 1)[1])
         text_fn(cfg, mid, commands.build_status(cfg, store),
                 commands.dashboard_keyboard(store))
+        sess = store.active_session()
+        if sess:
+            # Bind a fresh message so a reply routes to the switched session.
+            new_mid = send_fn(cfg, commands.switch_msg(
+                sess.get("cwd", ""), sess["iterm_session_id"]))
+            store.upsert_session(sess["iterm_session_id"], sess.get("job_pid"),
+                                 sess.get("cwd", ""), new_mid)
         answer_fn(cfg, cq_id, "active switched")
     elif data.startswith("new:"):
         cwds = commands.distinct_cwds(store)

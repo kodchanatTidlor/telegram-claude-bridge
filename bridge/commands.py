@@ -231,6 +231,15 @@ def new_session_msg(cwd, sid) -> str:
     ])
 
 
+def switch_msg(cwd, sid) -> str:
+    return "\n".join([
+        "✅ *Switched session*",
+        f"folder: `{escape_md_v2(cwd)}`",
+        f"session ·{_tag(sid)}",
+        "reply here to talk to it",
+    ])
+
+
 def newmenu_keyboard(store):
     # Pick a known cwd to launch a fresh Claude session in (new:<index>).
     rows = [[{"text": f"📂 {_base(c)}", "callback_data": f"new:{i}"}]

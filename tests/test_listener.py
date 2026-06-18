@@ -130,8 +130,11 @@ def test_callback_switch_sets_active(tmp_path):
     store = Store(cfg.store_path)
     store.upsert_session("w0:AAAA", 1, "/a", 5)
     store.upsert_session("w1:BBBB", 2, "/b", 6)   # active now BBBB
-    _run_cb(cfg, store, callback("sw:w0:AAAA"))
-    assert store.active_session()["iterm_session_id"] == "w0:AAAA"
+    *_, sent, _ = _run_cb(cfg, store, callback("sw:w0:AAAA"))
+    a = store.active_session()
+    assert a["iterm_session_id"] == "w0:AAAA"
+    assert sent and "Switched" in sent[0] and "/a" in sent[0]   # bound msg
+    assert a["recap_message_id"] == 777            # reply routes here
 
 
 def test_callback_new_opens_session_at_cwd(tmp_path):
