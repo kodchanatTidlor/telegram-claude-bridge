@@ -9,10 +9,16 @@ def _url(cfg, method):
     return API.format(token=cfg.bot_token, method=method)
 
 
+def _chat(cfg):
+    # Group mode targets the supergroup; DM mode (group_id 0) the owner — so
+    # every existing call site keeps working unchanged.
+    return cfg.group_id or cfg.allowed_chat_id
+
+
 def send_message(cfg, text, reply_to=None, reply_markup=None,
-                 silent=False) -> int:
+                 silent=False, message_thread_id=None) -> int:
     payload = {
-        "chat_id": cfg.allowed_chat_id,
+        "chat_id": _chat(cfg),
         "text": text,
         "parse_mode": "MarkdownV2",
     }
@@ -22,6 +28,8 @@ def send_message(cfg, text, reply_to=None, reply_markup=None,
         payload["reply_markup"] = reply_markup
     if silent:
         payload["disable_notification"] = True
+    if message_thread_id is not None:
+        payload["message_thread_id"] = message_thread_id
 
     for _ in range(2):
         resp = httpx.post(_url(cfg, "sendMessage"), json=payload, timeout=15)
@@ -51,7 +59,7 @@ def _best_effort(method, payload) -> None:
 def send_chat_action(cfg, action="typing") -> None:
     # A typing bubble lasts ~5s, so the listener repeats it while Claude works.
     _best_effort("sendChatAction",
-                 lambda c: {"chat_id": c.allowed_chat_id, "action": action})(cfg)
+                 lambda c: {"chat_id": _chat(c), "action": action})(cfg)
 
 
 def answer_callback(cfg, callback_query_id, text="") -> None:
@@ -63,14 +71,14 @@ def answer_callback(cfg, callback_query_id, text="") -> None:
 def edit_reply_markup(cfg, message_id, markup=None) -> None:
     # Swap a message's inline keyboard (None = strip it, e.g. after a gate tap).
     _best_effort("editMessageReplyMarkup",
-                 lambda c: {"chat_id": c.allowed_chat_id,
+                 lambda c: {"chat_id": _chat(c),
                             "message_id": message_id,
                             "reply_markup": markup or {"inline_keyboard": []}})(cfg)
 
 
 def edit_message_text(cfg, message_id, text, reply_markup=None) -> None:
     def payload(c):
-        p = {"chat_id": c.allowed_chat_id, "message_id": message_id,
+        p = {"chat_id": _chat(c), "message_id": message_id,
              "text": text, "parse_mode": "MarkdownV2"}
         if reply_markup is not None:
             p["reply_markup"] = reply_markup
@@ -80,7 +88,7 @@ def edit_message_text(cfg, message_id, text, reply_markup=None) -> None:
 
 def delete_message(cfg, message_id) -> None:
     _best_effort("deleteMessage",
-                 lambda c: {"chat_id": c.allowed_chat_id,
+                 lambda c: {"chat_id": _chat(c),
                             "message_id": message_id})(cfg)
 
 
@@ -89,6 +97,16 @@ def set_my_commands(cfg, commands) -> None:
     cmds = [{"command": c.lstrip("/"), "description": d}
             for c, d in commands.items()]
     _best_effort("setMyCommands", lambda c: {"commands": cmds})(cfg)
+
+
+def create_forum_topic(cfg, name) -> int:
+    # Create a forum topic in the group; returns its message_thread_id.
+    resp = httpx.post(_url(cfg, "createForumTopic"),
+                      json={"chat_id": _chat(cfg), "name": name}, timeout=15)
+    data = resp.json()
+    if not data.get("ok"):
+        raise RuntimeError(f"telegram createForumTopic failed: {data}")
+    return data["result"]["message_thread_id"]
 
 
 def get_updates(cfg, offset) -> list:

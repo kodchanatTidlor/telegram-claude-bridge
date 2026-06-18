@@ -56,6 +56,13 @@ def resolve_topic(store, sid, cwd, live_sids, create_fn):
     return topic_id
 
 
+def thread_for(cfg, store, sid, cwd, live_sids, create_fn):
+    """message_thread_id for a session's outbound message — None in DM mode."""
+    if not is_group_mode(cfg):
+        return None
+    return resolve_topic(store, sid, cwd, live_sids, create_fn)
+
+
 def session_of_topic(store, topic_id):
     """Inbound: which session owns this topic (for routing a reply)."""
     for sid, e in store.topics().items():
