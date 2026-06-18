@@ -57,23 +57,29 @@ def test_usage_help_has_steps_and_local(tmp_path):
     assert "Local usage" in out                     # still shows estimate
 
 
-def test_format_official_5h_7d_with_severity():
+def test_format_official_uses_api_severity_from_limits():
     now = 1_000_000.0
-    data = {
-        "five_hour": {"utilization": 85,
-                      "resets_at": _iso(now + 2 * 3600 + 600)},   # +2h10m
-        "seven_day": {"utilization": 30, "resets_at": _iso(now + 86400)},
-    }
+    data = {"limits": [
+        {"group": "session", "percent": 4, "severity": "normal",
+         "resets_at": _iso(now + 2 * 3600 + 600)},        # +2h10m
+        {"group": "weekly", "percent": 85, "severity": "warning",
+         "resets_at": _iso(now + 86400)},
+    ]}
     out = commands.format_official(data, now=now)
-    assert "🔴 5h: 85" in out and "in 2h 10m" in out       # severity + remaining
-    assert "🟢 7d: 30" in out                              # 7d, green
+    assert "🟢 5h: 4" in out and "in 2h 10m" in out       # API severity normal
+    assert "🟡 7d: 85" in out                             # API severity warning
     assert "reset" in out
 
 
-def test_format_official_severity_thresholds():
-    g = commands.format_official({"five_hour": {"utilization": 10}}, now=0)
-    y = commands.format_official({"five_hour": {"utilization": 60}}, now=0)
-    assert "🟢" in g and "🟡" in y
+def test_format_official_unknown_severity_is_red():
+    data = {"limits": [{"group": "session", "percent": 99,
+                        "severity": "critical", "resets_at": ""}]}
+    assert "🔴 5h: 99" in commands.format_official(data, now=0)
+
+
+def test_format_official_fallback_threshold_without_limits():
+    out = commands.format_official({"five_hour": {"utilization": 60}}, now=0)
+    assert "🟡 5h: 60" in out                             # threshold fallback
 
 
 def test_format_official_raw_fallback():

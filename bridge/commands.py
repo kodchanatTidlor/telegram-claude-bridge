@@ -55,7 +55,15 @@ def _first(d, *keys):
     return None
 
 
-def _severity(pct) -> str:
+# severity comes straight from the claude.ai API (limits[].severity).
+_SEV_EMOJI = {"normal": "🟢", "warning": "🟡", "critical": "🔴"}
+
+
+def _emoji(severity) -> str:
+    return _SEV_EMOJI.get(str(severity).lower(), "🔴")   # unknown → red (safe)
+
+
+def _severity(pct) -> str:   # threshold fallback when the API omits severity
     return "🔴" if pct >= 80 else "🟡" if pct >= 50 else "🟢"
 
 
@@ -75,12 +83,11 @@ def _fmt_in(epoch, now) -> str:
     return f"{h}h {m}m" if h else f"{m}m"
 
 
-def _window_line(label, window, now, with_in) -> str:
-    pct = _first(window, "utilization", "percent", "used_pct", "percentage")
+def _window_line(label, emoji, pct, reset_window, now, with_in) -> str:
     if pct is None:
         return ""
-    parts = [f"{_severity(pct)} {label}: {escape_md_v2(str(pct))}\\%"]
-    rst = _reset_epoch(window)
+    parts = [f"{emoji} {label}: {escape_md_v2(str(pct))}\\%"]
+    rst = _reset_epoch(reset_window)
     if rst:
         at = datetime.fromtimestamp(rst).strftime(
             "%H:%M" if label == "5h" else "%a %H:%M")
@@ -90,22 +97,42 @@ def _window_line(label, window, now, with_in) -> str:
     return " · ".join(parts)
 
 
+# claude.ai limits[].group → our window label
+_GROUP_LABEL = {"session": "5h", "weekly": "7d"}
+
+
 def format_official(data, now=None) -> str:
-    """Render 5h + 7d windows with severity-colored emoji. Field names are
-    guessed (flexible lookup); raw-dumps if neither window is found, for a
-    spike with a real key."""
+    """Render 5h + 7d windows with severity straight from the API
+    (limits[].severity). Falls back to the five_hour/seven_day blocks with
+    threshold severity, then to a raw dump for spiking."""
     import json
     now = time.time() if now is None else now
-    five = _first(data, "five_hour", "fiveHour", "5h")
-    seven = _first(data, "seven_day", "sevenDay", "7d")
     lines = ["📊 *Usage*"]
-    fh = _window_line("5h", five, now, with_in=True)
-    sd = _window_line("7d", seven, now, with_in=False)
-    if fh:
-        lines.append(fh)
-    if sd:
-        lines.append(sd)
-    if fh or sd:
+    by_label = {}
+
+    limits = data.get("limits") if isinstance(data, dict) else None
+    if isinstance(limits, list):
+        for lim in limits:
+            label = _GROUP_LABEL.get(lim.get("group"))
+            if label and label not in by_label:
+                by_label[label] = _window_line(
+                    label, _emoji(lim.get("severity")), lim.get("percent"),
+                    lim, now, with_in=(label == "5h"))
+
+    # fallback: top-level blocks with threshold-based severity
+    for label, key in (("5h", "five_hour"), ("7d", "seven_day")):
+        if label not in by_label:
+            w = _first(data, key)
+            pct = _first(w, "utilization", "percent") if w else None
+            if pct is not None:
+                by_label[label] = _window_line(label, _severity(pct), pct, w,
+                                               now, with_in=(label == "5h"))
+
+    for label in ("5h", "7d"):
+        if by_label.get(label):
+            lines.append(by_label[label])
+
+    if len(lines) > 1:
         return "\n".join(lines)
     raw = json.dumps(data)[:1500].replace("\\", "\\\\").replace("`", "\\`")
     return f"📊 *Usage \\(raw — refine parser\\)*\n```\n{raw}\n```"
