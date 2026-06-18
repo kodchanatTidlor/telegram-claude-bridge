@@ -50,6 +50,11 @@ def test_new_text_missing_file(tmp_path):
     assert text is None and cursor == 5
 
 
-def test_build_stream_text_escapes_and_clips():
+def test_build_stream_text_clips_and_escapes():
     out = build_stream_text("a." * 5000)
-    assert out.startswith("a\\.") and len(out) < 7000
+    assert "\\." in out and len(out) < 7000          # dot escaped for MarkdownV2
+
+
+def test_build_stream_text_renders_markdown():
+    out = build_stream_text("**bold** and `code`")
+    assert "*bold*" in out and "`code`" in out        # CommonMark -> MarkdownV2

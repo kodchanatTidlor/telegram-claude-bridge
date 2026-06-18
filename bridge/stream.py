@@ -1,6 +1,8 @@
 import json
 from pathlib import Path
 
+import telegramify_markdown
+
 from bridge.recap import escape_md_v2
 
 STREAM_MAX = 3000        # Telegram hard cap is 4096; leave room for escaping.
@@ -42,4 +44,11 @@ def new_text(path, start_line):
 
 
 def build_stream_text(text) -> str:
-    return escape_md_v2(text[:STREAM_MAX])
+    # Claude writes CommonMark; Telegram wants MarkdownV2. telegramify converts
+    # and escapes (bold/headers/lists/code/blockquote). Fall back to a plain
+    # escape if conversion ever fails, so a turn is never dropped.
+    clipped = text[:STREAM_MAX]
+    try:
+        return telegramify_markdown.markdownify(clipped)
+    except Exception:
+        return escape_md_v2(clipped)
