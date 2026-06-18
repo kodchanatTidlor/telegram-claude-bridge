@@ -57,3 +57,19 @@ def test_usage_since_sums_window_across_files(tmp_path):
 def test_usage_since_missing_dir():
     u = usage_since("/nope/projects", since_ts=0)
     assert u["total"] == 0 and u["messages"] == 0
+
+
+def test_fetch_usage_resolves_org_then_usage():
+    from bridge import usage_api
+    calls = []
+
+    def fake_get(path, key):
+        calls.append((path, key))
+        if path == "/organizations":
+            return [{"uuid": "ORG123"}]
+        return {"five_hour": {"utilization": 50}}
+
+    out = usage_api.fetch_usage("sk-ant-sid-x", get=fake_get)
+    assert calls[0] == ("/organizations", "sk-ant-sid-x")
+    assert calls[1] == ("/organizations/ORG123/usage", "sk-ant-sid-x")
+    assert out["five_hour"]["utilization"] == 50

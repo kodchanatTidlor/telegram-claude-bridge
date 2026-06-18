@@ -5,7 +5,7 @@ import sys
 import time
 
 from bridge.busy import is_busy
-from bridge import commands
+from bridge import commands, usage_api
 from bridge.config import is_allowed, load_config
 from bridge.gate import resolve_pending
 from bridge.iterm import SHELL_JOB_NAMES, should_inject, strip_session_prefix
@@ -221,6 +221,21 @@ async def _inject(app, session_id, text, expected_pid, enter=True) -> bool:
     return False  # session not found (tab closed)
 
 
+def _send_usage(cfg) -> None:
+    # No key → instructions (+ local estimate). Key → official %; on any error
+    # fall back to the local estimate so /usage always answers.
+    if not cfg.session_key:
+        send_message(cfg, commands.usage_help(cfg))
+        return
+    try:
+        send_message(cfg, commands.format_official(
+            usage_api.fetch_usage(cfg.session_key)))
+    except Exception as exc:
+        send_message(cfg, "⚠️ usage fetch failed "
+                     f"\\({type(exc).__name__}\\) — key หมดอายุ?\n\n"
+                     + commands.build_usage_local(cfg))
+
+
 async def handle_bridge_command(cfg, store, app, update) -> bool:
     """Bridge-local commands + session-switch buttons — answered here, never
     injected into Claude. Returns True if consumed."""
@@ -246,7 +261,7 @@ async def handle_bridge_command(cfg, store, app, update) -> bool:
         await asyncio.to_thread(send_message, cfg, commands.build_status(cfg, store),
                                 reply_markup=commands.dashboard_keyboard(store))
     elif cmd == "/usage":
-        await asyncio.to_thread(send_message, cfg, commands.build_usage(cfg))
+        await asyncio.to_thread(_send_usage, cfg)
     elif cmd == "/screen":
         active = store.active_session()
         text = await _grab_screen(app, active["iterm_session_id"]) \

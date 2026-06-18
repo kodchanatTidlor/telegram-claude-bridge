@@ -38,8 +38,27 @@ def test_build_usage_shows_5h_tokens(tmp_path):
     cfg = Config(bot_token="t", allowed_chat_id=1, poll_timeout=1,
                  store_path=tmp_path / "s.json", flag_path=tmp_path / ".e",
                  pid_path=tmp_path / ".p", projects_dir=tmp_path / "projects")
-    out = commands.build_usage(cfg, now=now)
-    assert "Usage" in out and "1\\.5k" in out and "last 5h" in out
+    out = commands.build_usage_local(cfg, now=now)
+    assert "usage" in out.lower() and "1\\.5k" in out and "last 5h" in out
+
+
+def test_usage_help_has_steps_and_local(tmp_path):
+    cfg = Config(bot_token="t", allowed_chat_id=1, poll_timeout=1,
+                 store_path=tmp_path / "s.json", flag_path=tmp_path / ".e",
+                 pid_path=tmp_path / ".p", projects_dir=tmp_path / "none")
+    out = commands.usage_help(cfg, now=0)
+    assert "SESSION" in out and "sk\\-ant\\-sid" in out
+    assert "Local usage" in out                     # still shows estimate
+
+
+def test_format_official_surfaces_percent():
+    out = commands.format_official({"five_hour": {"utilization": 42}})
+    assert "42" in out and "5h" in out
+
+
+def test_format_official_raw_fallback():
+    out = commands.format_official({"weird": "shape"})
+    assert "raw" in out and "weird" in out          # dumped for spiking
 
 
 def test_resolve_button_labels_to_commands():

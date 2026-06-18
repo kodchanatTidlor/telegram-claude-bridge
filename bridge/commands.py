@@ -20,17 +20,43 @@ def _k(n) -> str:
     return f"{n / 1000:.1f}k" if n >= 1000 else str(n)
 
 
-def build_usage(cfg, now=None) -> str:
+def build_usage_local(cfg, now=None) -> str:
+    """Permission-free fallback: 5h token totals from local transcripts."""
     now = time.time() if now is None else now
     u = usage_since(cfg.projects_dir, now - USAGE_WINDOW)
     return "\n".join([
-        "📊 *Usage* — last 5h \\(all sessions\\)",
-        f"output: {escape_md_v2(_k(u['output']))}",
+        "📊 *Local usage* — last 5h \\(tokens, all sessions\\)",
+        f"output: {escape_md_v2(_k(u['output']))} · "
         f"input: {escape_md_v2(_k(u['input']))}",
-        f"cache: {escape_md_v2(_k(u['cache_read'] + u['cache_creation']))}",
-        f"*total: {escape_md_v2(_k(u['total']))}* · "
-        f"{u['messages']} msgs",
+        f"cache: {escape_md_v2(_k(u['cache_read'] + u['cache_creation']))} · "
+        f"total: {escape_md_v2(_k(u['total']))}",
     ])
+
+
+def usage_help(cfg, now=None) -> str:
+    """No session key set — tell the user how to add one for official %, and
+    still show the local token estimate so /usage isn't empty."""
+    return "\n".join([
+        "🔑 *No CLAUDE\\_SESSION\\_KEY set*",
+        escape_md_v2("ดู quota % ทางการ ต้องใส่ session key:"),
+        escape_md_v2("1. เปิด claude.ai → DevTools → Application → Cookies"),
+        escape_md_v2("2. ก็อปค่า sessionKey (sk-ant-sid…)"),
+        escape_md_v2("3. ใส่ใน .env: CLAUDE_SESSION_KEY=sk-ant-sid…  แล้ว ♻️ Reload"),
+        "",
+        build_usage_local(cfg, now),
+    ])
+
+
+def format_official(data) -> str:
+    """Best-effort: surface a 5h utilization %, else dump raw for spiking."""
+    import json
+    fh = data.get("five_hour") if isinstance(data, dict) else None
+    if isinstance(fh, dict):
+        pct = fh.get("utilization", fh.get("percent", fh.get("used_pct")))
+        if pct is not None:
+            return f"📊 *Usage — 5h*: {escape_md_v2(str(pct))}\\%"
+    raw = json.dumps(data)[:1500].replace("\\", "\\\\").replace("`", "\\`")
+    return f"📊 *Usage \\(raw — refine parser\\)*\n```\n{raw}\n```"
 # Reply-keyboard buttons send their label verbatim, so raw "/status" looks odd.
 # Show a friendly label and map it back to the command.
 # Order = reply-keyboard layout (left→right); Stop sits far right.
