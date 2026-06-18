@@ -15,6 +15,7 @@ class Config:
     pid_path: Path
     # Defaulted so existing call sites / test fixtures need no change.
     gate_dir: Path = field(default=BASE_DIR / ".gate")
+    busy_path: Path = field(default=BASE_DIR / ".busy")
 
 
 def _load_dotenv(path: Path) -> None:
@@ -44,6 +45,7 @@ def load_config() -> Config:
         flag_path=BASE_DIR / ".enabled",
         pid_path=BASE_DIR / ".listener.pid",
         gate_dir=BASE_DIR / ".gate",
+        busy_path=BASE_DIR / ".busy",
     )
 
 
