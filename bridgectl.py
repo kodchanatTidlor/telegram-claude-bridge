@@ -39,9 +39,11 @@ def cmd_serve(cfg) -> None:
 
 
 def cmd_status(cfg) -> str:
+    # listener up == mirror + gate active; down == fully local. No separate
+    # toggle: run `serve` to go remote, stop it to stay local.
     live = listener_alive(cfg.pid_path)
-    recap = "ON (listener up)" if live else "OFF (listener down)"
-    return f"listener: {'RUNNING' if live else 'STOPPED'} | recap: {recap}"
+    state = "ON (listener up)" if live else "OFF (listener down)"
+    return f"listener: {'RUNNING' if live else 'STOPPED'} | mirror+gate: {state}"
 
 
 def cmd_update(cfg) -> None:

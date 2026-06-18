@@ -2,6 +2,8 @@
 .enabled
 .listener.pid
 .store.json
+.gate/
+.busy
 __pycache__/
 *.pyc
 .venv/

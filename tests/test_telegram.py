@@ -34,6 +34,43 @@ def test_send_message_retries_on_429(monkeypatch):
     assert telegram.send_message(make_cfg(), "x") == 9
 
 
+def test_send_message_includes_reply_markup(monkeypatch):
+    calls = {}
+
+    def fake_post(url, json, timeout):
+        calls["json"] = json
+        return httpx.Response(200, json={"ok": True, "result": {"message_id": 1}})
+
+    monkeypatch.setattr(telegram.httpx, "post", fake_post)
+    kb = {"inline_keyboard": [[{"text": "ok", "callback_data": "y"}]]}
+    telegram.send_message(make_cfg(), "x", reply_markup=kb)
+    assert calls["json"]["reply_markup"] == kb
+
+
+def test_send_message_silent(monkeypatch):
+    calls = {}
+    monkeypatch.setattr(telegram.httpx, "post", lambda url, json, timeout:
+                        (calls.update(json=json),
+                         httpx.Response(200, json={"ok": True,
+                                                   "result": {"message_id": 1}}))[1])
+    telegram.send_message(make_cfg(), "x", silent=True)
+    assert calls["json"]["disable_notification"] is True
+
+
+def test_best_effort_helpers_swallow_errors(monkeypatch):
+    def boom(*a, **k):
+        raise httpx.TimeoutException("slow")   # NOT an httpx.HTTPError
+
+    monkeypatch.setattr(telegram.httpx, "post", boom)
+    cfg = make_cfg()
+    # none of these may raise
+    telegram.send_chat_action(cfg)
+    telegram.answer_callback(cfg, "cq")
+    telegram.edit_reply_markup(cfg, 1)
+    telegram.delete_message(cfg, 1)
+    telegram.set_my_commands(cfg, {"/x": "y"})
+
+
 def test_get_updates_returns_results(monkeypatch):
     def fake_get(url, params, timeout):
         return httpx.Response(200, json={"ok": True, "result": [{"update_id": 1}]})

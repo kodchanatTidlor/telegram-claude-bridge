@@ -9,14 +9,11 @@ def escape_md_v2(text: str) -> str:
     return "".join(out)
 
 
-EMPTY_BODY = escape_md_v2("[done — no reply text]")
+NOTIFY_DEFAULT = "Claude is waiting for your input"
 
 
-def build_recap(user_prompt, assistant_text) -> str:
-    body = escape_md_v2(assistant_text) if assistant_text else EMPTY_BODY
-    if user_prompt:
-        clipped = user_prompt[:PROMPT_MAX]
-        lines = clipped.splitlines() or [""]
-        quote = "\n".join(">" + escape_md_v2(ln) for ln in lines)
-        return f"{quote}\n\n{body}"
-    return body
+def build_notify(message) -> str:
+    # Claude paused for input (permission prompt / idle / asking). Reply to
+    # this message in Telegram to route the answer back into the session.
+    text = (message or NOTIFY_DEFAULT)[:PROMPT_MAX]
+    return f"⏸ {escape_md_v2(text)}"
