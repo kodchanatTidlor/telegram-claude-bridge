@@ -10,9 +10,9 @@ from bridge.config import is_allowed, load_config
 from bridge.gate import resolve_pending
 from bridge.iterm import SHELL_JOB_NAMES, should_inject, strip_session_prefix
 from bridge.store import Store
-from bridge.telegram import (answer_callback, edit_message_text,
-                             edit_reply_markup, get_updates, send_chat_action,
-                             send_message, set_my_commands)
+from bridge.telegram import (answer_callback, delete_message,
+                             edit_message_text, edit_reply_markup, get_updates,
+                             send_chat_action, send_message, set_my_commands)
 
 ESC = "\x1b"   # interrupt Claude's current generation (soft stop)
 
@@ -54,6 +54,36 @@ def _is_shell(job_name) -> bool:
     if not job_name:
         return True
     return job_name.rsplit("/", 1)[-1].lower() in SHELL_JOB_NAMES
+
+
+async def _grab_screen(app, sid):
+    """Read the visible text of a session's terminal (the live TUI panel)."""
+    await app.async_refresh()
+    target = strip_session_prefix(sid)
+    for w in app.windows:
+        for t in w.tabs:
+            for s in t.sessions:
+                if strip_session_prefix(s.session_id) != target:
+                    continue
+                c = await s.async_get_screen_contents()
+                rows = [c.line(i).string for i in range(c.number_of_lines)]
+                return "\n".join(rows)
+    return None
+
+
+def _clear_screens(cfg, store) -> None:
+    for mid in store.pop_screens():
+        delete_message(cfg, mid)
+
+
+def _post_screen(cfg, store, text) -> None:
+    # Ephemeral: drop the previous snapshot, post the new one, remember it so
+    # the next user message clears it.
+    _clear_screens(cfg, store)
+    if text is None:
+        send_message(cfg, "⚠️ session not found")
+        return
+    store.add_screen(send_message(cfg, commands.screen_block(text)))
 
 
 async def _prune_dead(app, store) -> None:
@@ -203,6 +233,11 @@ async def handle_bridge_command(cfg, store, app, update) -> bool:
         await _prune_dead(app, store)   # show only live sessions
         await asyncio.to_thread(send_message, cfg, commands.build_status(cfg, store),
                                 reply_markup=commands.dashboard_keyboard(store))
+    elif cmd == "/screen":
+        active = store.active_session()
+        text = await _grab_screen(app, active["iterm_session_id"]) \
+            if active else None
+        await asyncio.to_thread(_post_screen, cfg, store, text)
     else:   # /help
         await asyncio.to_thread(send_message, cfg, commands.build_help())
     return True
@@ -249,6 +284,9 @@ async def _amain(connection) -> None:
                     if await handle_callback(cfg, store, app, connection, update):
                         _log("  button tap")
                         continue
+                    # Any user message clears the previous screen snapshot.
+                    if (update.get("message") or {}).get("text"):
+                        await asyncio.to_thread(_clear_screens, cfg, store)
                     if handle_gate_reply(cfg, update):
                         _log("  gate reply -> answered hook")
                         continue

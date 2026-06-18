@@ -128,6 +128,20 @@ class Store:
         self._write(data)
         return mid
 
+    def add_screen(self, message_id) -> None:
+        # Track ephemeral screen-capture messages so they can be removed on the
+        # user's next message.
+        data = self._read()
+        data["screens"] = data.get("screens", []) + [message_id]
+        self._write(data)
+
+    def pop_screens(self):
+        data = self._read()
+        mids = data.get("screens", [])
+        data["screens"] = []
+        self._write(data)
+        return mids
+
     def get_offset(self) -> int:
         return int(self._read().get("offset", 0))
 

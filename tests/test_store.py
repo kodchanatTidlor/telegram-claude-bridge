@@ -48,6 +48,14 @@ def test_upsert_dedupes_by_guid(tmp_path):
     assert s.active_session()["job_pid"] == 99
 
 
+def test_screen_msgs_add_and_pop(tmp_path):
+    s = Store(tmp_path / "s.json")
+    s.add_screen(1)
+    s.add_screen(2)
+    assert s.pop_screens() == [1, 2]
+    assert s.pop_screens() == []          # cleared
+
+
 def test_active_is_most_recent(tmp_path):
     s = Store(tmp_path / "s.json")
     s.upsert_session("sid1", 1, "/a", 10)
