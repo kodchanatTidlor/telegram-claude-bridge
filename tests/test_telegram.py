@@ -57,24 +57,6 @@ def test_send_message_silent(monkeypatch):
     assert calls["json"]["disable_notification"] is True
 
 
-def test_send_photo_uploads_and_returns_id(monkeypatch, tmp_path):
-    img = tmp_path / "s.png"
-    img.write_bytes(b"PNGDATA")
-    calls = {}
-
-    def fake_post(url, data, files, timeout):
-        calls["url"] = url
-        calls["data"] = data
-        calls["files"] = files
-        return httpx.Response(200, json={"ok": True, "result": {"message_id": 7}})
-
-    monkeypatch.setattr(telegram.httpx, "post", fake_post)
-    mid = telegram.send_photo(make_cfg(), str(img), silent=True)
-    assert mid == 7 and "sendPhoto" in calls["url"]
-    assert calls["data"]["disable_notification"] == "true"
-    assert calls["files"]["photo"][1] == b"PNGDATA"
-
-
 def test_best_effort_helpers_swallow_errors(monkeypatch):
     def boom(*a, **k):
         raise httpx.TimeoutException("slow")   # NOT an httpx.HTTPError

@@ -9,6 +9,7 @@ COMMANDS = {
     "/cancel": "stop Claude (send ESC)",
     "/help": "list bridge commands",
 }
+SCREEN_LINES = 40
 # Reply-keyboard buttons send their label verbatim, so raw "/status" looks odd.
 # Show a friendly label and map it back to the command.
 # Order = reply-keyboard layout (left→right); Stop sits far right.
@@ -84,6 +85,14 @@ def dashboard_keyboard(store):
                "callback_data": f"sw:{s['iterm_session_id']}"}]
              for s in store.sessions()]
     return {"inline_keyboard": rows}
+
+
+def screen_block(text) -> str:
+    # Wrap the terminal snapshot in a MarkdownV2 code block so monospace keeps
+    # the panel's layout. Inside a pre block only ` and \ need escaping.
+    lines = (text or "").splitlines()[-SCREEN_LINES:]
+    body = "\n".join(lines).replace("\\", "\\\\").replace("`", "\\`")
+    return f"```\n{body or '(blank)'}\n```"
 
 
 def new_session_msg(cwd, sid) -> str:

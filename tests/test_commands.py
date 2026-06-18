@@ -65,6 +65,11 @@ def test_dashboard_has_session_and_new_buttons(tmp_path):
     assert sw["callback_data"] == "sw:w0t0p0:AAAA-D33B"   # full sid
 
 
+def test_screen_block_fences_and_escapes():
+    out = commands.screen_block("a`b\\c")
+    assert out == "```\na\\`b\\\\c\n```"        # fenced + ` and \ escaped
+
+
 def test_dashboard_top_row_has_reload(tmp_path):
     store = Store(tmp_path / "s.json")
     top = [b["callback_data"]

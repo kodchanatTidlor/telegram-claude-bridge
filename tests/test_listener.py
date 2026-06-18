@@ -166,36 +166,48 @@ class _FakeApp:
         pass
 
 
-def test_post_shot_replaces_previous(tmp_path):
+class _Line:
+    def __init__(self, s):
+        self.string = s
+
+
+class _Contents:
+    def __init__(self, lines):
+        self._lines = [_Line(x) for x in lines]
+        self.number_of_lines = len(self._lines)
+
+    def line(self, i):
+        return self._lines[i]
+
+
+class _ScreenSession(_FakeSession):
+    def __init__(self, sid, lines):
+        super().__init__(sid, "claude")
+        self._lines = lines
+
+    async def async_get_screen_contents(self):
+        return _Contents(self._lines)
+
+
+def test_grab_screen_reads_visible_lines(tmp_path):
+    app = _FakeApp([_ScreenSession("live", ["line1", "line2", "panel"])])
+    assert asyncio.run(listener._grab_screen(app, "w:live")) == "line1\nline2\npanel"
+
+
+def test_post_screen_replaces_previous(tmp_path):
     cfg = make_cfg(tmp_path)
     store = Store(cfg.store_path)
     store.add_screen(11)                      # an old snapshot
-    shot = tmp_path / "shot.png"
-    shot.write_bytes(b"img")
-    deleted, photos = [], []
-    orig_photo, orig_del = listener.send_photo, listener.delete_message
-    listener.send_photo = lambda c, p, silent=False: photos.append(p) or 22
+    sent, deleted = [], []
+    orig_send, orig_del = listener.send_message, listener.delete_message
+    listener.send_message = lambda c, t: sent.append(t) or 22
     listener.delete_message = lambda c, m: deleted.append(m)
     try:
-        listener._post_shot(cfg, store, str(shot))
+        listener._post_screen(cfg, store, "screen text")
     finally:
-        listener.send_photo, listener.delete_message = orig_photo, orig_del
+        listener.send_message, listener.delete_message = orig_send, orig_del
     assert deleted == [11]                     # old removed
-    assert photos == [str(shot)]               # photo sent
     assert store.pop_screens() == [22]         # new tracked
-
-
-def test_post_shot_missing_file_warns(tmp_path):
-    cfg = make_cfg(tmp_path)
-    store = Store(cfg.store_path)
-    sent = []
-    orig = listener.send_message
-    listener.send_message = lambda c, t: sent.append(t)
-    try:
-        listener._post_shot(cfg, store, str(tmp_path / "nope.png"))
-    finally:
-        listener.send_message = orig
-    assert sent and "failed" in sent[0]
 
 
 def test_prune_dead_keeps_only_running_claude(tmp_path):
