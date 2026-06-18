@@ -57,6 +57,10 @@ def build_status(cfg, store) -> str:
         f"active: `{escape_md_v2(cwd)}`",
         f"model: {escape_md_v2(model or '?')}",
         f"pending: {_pending_count(cfg)} · sessions: {len(store.sessions())}",
+        "",
+        escape_md_v2("🔄 Refresh = อัปเดตรายการ + ล้าง session ที่ปิด"),
+        escape_md_v2("♻️ Reload = restart bridge (โหลดโค้ดใหม่)"),
+        escape_md_v2("📁 = สลับ session · ➕ New = เปิด session ใหม่"),
     ])
 
 
