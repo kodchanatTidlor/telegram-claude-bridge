@@ -1,6 +1,12 @@
+from datetime import datetime, timezone
+
 from bridge.config import Config
 from bridge.store import Store
 from bridge import commands, busy, gate
+
+
+def _iso(epoch):
+    return datetime.fromtimestamp(epoch, timezone.utc).isoformat()
 
 
 def make_cfg(tmp_path):
@@ -51,13 +57,27 @@ def test_usage_help_has_steps_and_local(tmp_path):
     assert "Local usage" in out                     # still shows estimate
 
 
-def test_format_official_surfaces_percent():
-    out = commands.format_official({"five_hour": {"utilization": 42}})
-    assert "42" in out and "5h" in out
+def test_format_official_5h_7d_with_severity():
+    now = 1_000_000.0
+    data = {
+        "five_hour": {"utilization": 85,
+                      "resets_at": _iso(now + 2 * 3600 + 600)},   # +2h10m
+        "seven_day": {"utilization": 30, "resets_at": _iso(now + 86400)},
+    }
+    out = commands.format_official(data, now=now)
+    assert "🔴 5h: 85" in out and "in 2h 10m" in out       # severity + remaining
+    assert "🟢 7d: 30" in out                              # 7d, green
+    assert "reset" in out
+
+
+def test_format_official_severity_thresholds():
+    g = commands.format_official({"five_hour": {"utilization": 10}}, now=0)
+    y = commands.format_official({"five_hour": {"utilization": 60}}, now=0)
+    assert "🟢" in g and "🟡" in y
 
 
 def test_format_official_raw_fallback():
-    out = commands.format_official({"weird": "shape"})
+    out = commands.format_official({"weird": "shape"}, now=0)
     assert "raw" in out and "weird" in out          # dumped for spiking
 
 

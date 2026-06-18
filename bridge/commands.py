@@ -1,4 +1,5 @@
 import time
+from datetime import datetime
 
 from bridge.busy import is_busy
 from bridge.recap import escape_md_v2
@@ -47,14 +48,65 @@ def usage_help(cfg, now=None) -> str:
     ])
 
 
-def format_official(data) -> str:
-    """Best-effort: surface a 5h utilization %, else dump raw for spiking."""
+def _first(d, *keys):
+    for k in keys:
+        if isinstance(d, dict) and d.get(k) is not None:
+            return d[k]
+    return None
+
+
+def _severity(pct) -> str:
+    return "🔴" if pct >= 80 else "🟡" if pct >= 50 else "🟢"
+
+
+def _reset_epoch(window):
+    iso = _first(window, "resets_at", "reset_at", "resetsAt", "resets")
+    try:
+        return datetime.fromisoformat(str(iso).replace("Z", "+00:00")).timestamp()
+    except (ValueError, TypeError, AttributeError):
+        return None
+
+
+def _fmt_in(epoch, now) -> str:
+    secs = int(epoch - now)
+    if secs <= 0:
+        return "now"
+    h, m = divmod(secs // 60, 60)
+    return f"{h}h {m}m" if h else f"{m}m"
+
+
+def _window_line(label, window, now, with_in) -> str:
+    pct = _first(window, "utilization", "percent", "used_pct", "percentage")
+    if pct is None:
+        return ""
+    parts = [f"{_severity(pct)} {label}: {escape_md_v2(str(pct))}\\%"]
+    rst = _reset_epoch(window)
+    if rst:
+        at = datetime.fromtimestamp(rst).strftime(
+            "%H:%M" if label == "5h" else "%a %H:%M")
+        parts.append(f"reset {escape_md_v2(at)}")
+        if with_in:
+            parts.append(f"in {escape_md_v2(_fmt_in(rst, now))}")
+    return " · ".join(parts)
+
+
+def format_official(data, now=None) -> str:
+    """Render 5h + 7d windows with severity-colored emoji. Field names are
+    guessed (flexible lookup); raw-dumps if neither window is found, for a
+    spike with a real key."""
     import json
-    fh = data.get("five_hour") if isinstance(data, dict) else None
-    if isinstance(fh, dict):
-        pct = fh.get("utilization", fh.get("percent", fh.get("used_pct")))
-        if pct is not None:
-            return f"📊 *Usage — 5h*: {escape_md_v2(str(pct))}\\%"
+    now = time.time() if now is None else now
+    five = _first(data, "five_hour", "fiveHour", "5h")
+    seven = _first(data, "seven_day", "sevenDay", "7d")
+    lines = ["📊 *Usage*"]
+    fh = _window_line("5h", five, now, with_in=True)
+    sd = _window_line("7d", seven, now, with_in=False)
+    if fh:
+        lines.append(fh)
+    if sd:
+        lines.append(sd)
+    if fh or sd:
+        return "\n".join(lines)
     raw = json.dumps(data)[:1500].replace("\\", "\\\\").replace("`", "\\`")
     return f"📊 *Usage \\(raw — refine parser\\)*\n```\n{raw}\n```"
 # Reply-keyboard buttons send their label verbatim, so raw "/status" looks odd.
