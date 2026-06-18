@@ -142,6 +142,28 @@ class Store:
         self._write(data)
         return mids
 
+    # --- group/topics mode: session_id -> {topic_id, cwd} ----------------
+    def topics(self):
+        return self._read().get("topics", {})
+
+    def topic_of(self, iterm_session_id):
+        e = self._read().get("topics", {}).get(iterm_session_id)
+        return e["topic_id"] if e else None
+
+    def set_topic(self, iterm_session_id, topic_id, cwd) -> None:
+        data = self._read()
+        t = data.get("topics", {})
+        t[iterm_session_id] = {"topic_id": topic_id, "cwd": cwd}
+        data["topics"] = t
+        self._write(data)
+
+    def drop_topic(self, iterm_session_id) -> None:
+        data = self._read()
+        t = data.get("topics", {})
+        if t.pop(iterm_session_id, None) is not None:
+            data["topics"] = t
+            self._write(data)
+
     def get_offset(self) -> int:
         return int(self._read().get("offset", 0))
 

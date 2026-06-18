@@ -15,6 +15,9 @@ class Config:
     pid_path: Path
     # Optional claude.ai session key (sk-ant-sid…) for official quota %.
     session_key: str = ""
+    # Set (a negative supergroup id) to enable group/topics mode; messages go
+    # to this group instead of the DM. 0 = DM mode (unchanged).
+    group_id: int = 0
     # Defaulted so existing call sites / test fixtures need no change.
     gate_dir: Path = field(default=BASE_DIR / ".gate")
     busy_path: Path = field(default=BASE_DIR / ".busy")
@@ -46,6 +49,7 @@ def load_config() -> Config:
         allowed_chat_id=int(chat),
         poll_timeout=int(os.environ.get("POLL_TIMEOUT", "50")),
         session_key=os.environ.get("CLAUDE_SESSION_KEY", ""),
+        group_id=int(os.environ.get("GROUP_CHAT_ID", "0") or "0"),
         store_path=Path(os.environ.get("STORE_PATH", BASE_DIR / ".store.json")),
         flag_path=BASE_DIR / ".enabled",
         pid_path=BASE_DIR / ".listener.pid",
