@@ -71,7 +71,7 @@ def test_resolve_button_labels_to_commands():
 def test_command_keyboard_is_commands_only(tmp_path):
     kb = commands.command_keyboard()["keyboard"]
     labels = [b["text"] for row in kb for b in row]
-    assert labels == ["📊 Status", "📸 Screen", "🛑 Stop"]   # Stop far right
+    assert labels == ["📊 Status", "📈 Usage", "📸 Screen", "🛑 Stop"]  # 4, 1 row
     assert all("📁" not in label for label in labels)        # no session buttons
 
 

@@ -60,7 +60,8 @@ def format_official(data) -> str:
 # Reply-keyboard buttons send their label verbatim, so raw "/status" looks odd.
 # Show a friendly label and map it back to the command.
 # Order = reply-keyboard layout (left→right); Stop sits far right.
-BUTTONS = {"📊 Status": "/status", "📸 Screen": "/screen", "🛑 Stop": "/cancel"}
+BUTTONS = {"📊 Status": "/status", "📈 Usage": "/usage",
+           "📸 Screen": "/screen", "🛑 Stop": "/cancel"}
 
 
 def resolve(text):
