@@ -88,3 +88,19 @@ def test_interpret_question_out_of_range_is_custom():
 def test_build_permission_msg_shows_tool_and_arg():
     out = gate.build_permission_msg("Bash", {"command": "rm -rf x"})
     assert "Bash" in out and "rm" in out
+
+
+def test_permission_keyboard_has_allow_deny():
+    kb = gate.permission_keyboard()["inline_keyboard"][0]
+    data = {b["callback_data"] for b in kb}
+    assert data == {"y", "n"}
+
+
+def test_question_keyboard_indexes_options():
+    kb = gate.question_keyboard(["alpha", "beta"])["inline_keyboard"]
+    assert kb[0][0]["callback_data"] == "1" and "alpha" in kb[0][0]["text"]
+    assert kb[1][0]["callback_data"] == "2"
+
+
+def test_question_keyboard_empty_is_none():
+    assert gate.question_keyboard([]) is None

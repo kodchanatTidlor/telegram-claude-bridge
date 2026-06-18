@@ -132,6 +132,22 @@ def build_question_msg(tool_input) -> str:
     return "\n".join(lines)
 
 
+def permission_keyboard():
+    # callback_data flows through interpret_permission unchanged.
+    return {"inline_keyboard": [[
+        {"text": "✅ Allow", "callback_data": "y"},
+        {"text": "❌ Deny", "callback_data": "n"},
+    ]]}
+
+
+def question_keyboard(options):
+    # One button per option; callback_data is the 1-based index, which
+    # interpret_question maps back to the label. None if there are no options.
+    rows = [[{"text": f"{i}. {label}", "callback_data": str(i)}]
+            for i, label in enumerate(options, 1)]
+    return {"inline_keyboard": rows} if rows else None
+
+
 def question_options(tool_input):
     """Flat list of option labels across all questions (first question wins
     for the common single-question case)."""

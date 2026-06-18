@@ -4,9 +4,12 @@ import sys
 import time
 
 from bridge.config import BASE_DIR, load_config
+from bridge.busy import clear_busy
+from bridge.proc import listener_alive as _listener_alive
 from bridge.gate import (PERMISSION_TOOLS, QUESTION_TOOL, build_permission_msg,
                          build_question_msg, clear_pending, interpret_permission,
-                         interpret_question, question_options,
+                         interpret_question, permission_keyboard,
+                         question_keyboard, question_options,
                          register_pending, take_answer)
 from bridge.telegram import send_message
 
@@ -17,20 +20,6 @@ POLL_EVERY = 0.5
 # actually prompt. Only "default" mode prompts; the others auto-accept (or
 # don't execute), so gating them would nag for approvals nobody asked for.
 GATED_MODES = {"default", ""}
-
-
-def _listener_alive(pid_path) -> bool:
-    try:
-        pid = int(pid_path.read_text().strip())
-    except (FileNotFoundError, ValueError):
-        return False
-    try:
-        os.kill(pid, 0)
-    except ProcessLookupError:
-        return False
-    except PermissionError:
-        return True
-    return True
 
 
 def _decision(decision, reason):
@@ -73,14 +62,18 @@ def run(stdin_text, env, cfg, send_fn, wait_fn):
         if tool_name == QUESTION_TOOL:
             kind = "question"
             msg = build_question_msg(tool_input)
+            keyboard = question_keyboard(question_options(tool_input))
         elif tool_name in PERMISSION_TOOLS:
             kind = "permission"
             msg = build_permission_msg(tool_name, tool_input)
+            keyboard = permission_keyboard()
         else:
             return None
 
-        message_id = send_fn(cfg, msg)
+        message_id = send_fn(cfg, msg, reply_markup=keyboard)
         register_pending(cfg, message_id, {"kind": kind})
+        # It's the user's turn now — stop the typing bubble while we block.
+        clear_busy(cfg)
         answer = wait_fn(cfg, message_id)
         if answer is None:
             clear_pending(cfg, message_id)   # timeout → TUI menu shows locally
