@@ -10,14 +10,16 @@ from bridge.config import is_allowed, load_config
 from bridge.gate import resolve_pending
 from bridge.iterm import SHELL_JOB_NAMES, should_inject, strip_session_prefix
 from bridge.store import Store
-from bridge.telegram import (answer_callback, delete_message,
-                             edit_message_text, edit_reply_markup, get_updates,
-                             send_chat_action, send_message, set_my_commands)
+from bridge.telegram import (answer_callback, create_forum_topic,
+                             delete_message, edit_message_text,
+                             edit_reply_markup, get_updates, send_chat_action,
+                             send_message, set_my_commands)
 
 ESC = "\x1b"   # interrupt Claude's current generation (soft stop)
 
 NOT_RUNNING = "claude not running in this session — cancelled"
 TYPING_EVERY = 4.0   # the typing bubble lasts ~5s; refresh just under that
+GROUP_HINT = "💬 กรุณาเลือก topic ที่จะคุยด้วย"   # General/All ไม่ส่งต่อ
 
 
 def _log(msg: str) -> None:
@@ -125,7 +127,8 @@ async def handle_callback(cfg, store, app, connection, update,
                           send_fn=send_message,
                           open_fn=_open_session,
                           prune_fn=_prune_dead,
-                          exec_fn=_reexec) -> bool:
+                          exec_fn=_reexec,
+                          topic_fn=create_forum_topic) -> bool:
     """Inline-button taps. Dashboard buttons (sw:/new:/newmenu/back) are handled
     here; bare callback_data (y/n/index) routes to the pending gate."""
     cq = update.get("callback_query")
@@ -141,6 +144,8 @@ async def handle_callback(cfg, store, app, connection, update,
 
     if data == "refresh":
         await prune_fn(app, store)   # drop closed sessions, then re-render
+        if cfg.group_id:   # create any missing topics up front
+            group.ensure_topics(store, lambda n: topic_fn(cfg, n))
         text_fn(cfg, mid, commands.build_status(cfg, store),
                 commands.dashboard_keyboard(store))
         answer_fn(cfg, cq_id, "refreshed")
@@ -204,10 +209,7 @@ def resolve_target(cfg, store, update):
         sid = group.session_of_topic(store, message.get("message_thread_id"))
         session = next((s for s in store.sessions()
                         if s["iterm_session_id"] == sid), None)
-        # General / no-topic-yet → fall back to the latest session, so you can
-        # talk before any topic exists.
-        if session is None:
-            session = store.active_session()
+        # General / unmapped topic → no route (the loop hints to use a topic).
         return (session, text) if session else None
     reply = message.get("reply_to_message")
     session = None
@@ -296,6 +298,18 @@ async def handle_bridge_command(cfg, store, app, update) -> bool:
     return True
 
 
+def _should_hint(cfg, store, message) -> bool:
+    """Group mode: an allowlisted text message in General/All (or an unmapped
+    topic) with sessions present → tell the user to pick the session's topic."""
+    if not cfg.group_id or not message.get("text"):
+        return False
+    if not _allowed_msg(cfg, message):
+        return False
+    if group.session_of_topic(store, message.get("message_thread_id")):
+        return False
+    return bool(store.sessions())   # no sessions at all → stay silent
+
+
 async def _typing_loop(cfg) -> None:
     # Show a typing bubble while Claude is working; its absence is the "your
     # turn" signal, so no explicit waiting message is needed.
@@ -345,6 +359,13 @@ async def _amain(connection) -> None:
                         continue
                     if await handle_bridge_command(cfg, store, app, update):
                         _log("  bridge command")
+                        continue
+                    msg = update.get("message") or {}
+                    if _should_hint(cfg, store, msg):
+                        _log("  general/unmapped -> topic hint")
+                        await asyncio.to_thread(
+                            send_message, cfg, GROUP_HINT,
+                            message_thread_id=msg.get("message_thread_id"))
                         continue
                     target = resolve_target(cfg, store, update)
                     if target is None:

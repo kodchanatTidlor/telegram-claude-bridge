@@ -119,18 +119,46 @@ def test_group_rejects_other_member_and_chat(tmp_path):
                                    gmsg("x", 77, chat=-200)) is None   # other group
 
 
-def test_group_general_falls_back_to_active(tmp_path):
+def test_group_general_no_route(tmp_path):
     cfg = gcfg(tmp_path)
     store = Store(cfg.store_path)
-    store.upsert_session("sA", 1, "/a", 5)            # active, no topic bound
-    sess, _ = listener.resolve_target(cfg, store, gmsg("hi", thread=None))
-    assert sess["iterm_session_id"] == "sA"           # General → active
+    store.upsert_session("sA", 1, "/a", 5)            # session, no topic bound
+    # General/All never routes to a session — resolve_target drops it.
+    assert listener.resolve_target(cfg, store, gmsg("hi", thread=None)) is None
 
 
 def test_group_no_session_no_route(tmp_path):
     cfg = gcfg(tmp_path)
     store = Store(cfg.store_path)                       # empty
     assert listener.resolve_target(cfg, store, gmsg("x", thread=999)) is None
+
+
+def test_should_hint_general_with_session(tmp_path):
+    cfg = gcfg(tmp_path)
+    store = Store(cfg.store_path)
+    store.upsert_session("sA", 1, "/a", 5)            # session exists, no topic
+    assert listener._should_hint(cfg, store, gmsg("hi", thread=None)["message"])
+
+
+def test_no_hint_when_no_session(tmp_path):
+    cfg = gcfg(tmp_path)
+    store = Store(cfg.store_path)                       # empty → stay silent
+    assert not listener._should_hint(cfg, store, gmsg("hi", thread=None)["message"])
+
+
+def test_no_hint_on_mapped_topic(tmp_path):
+    cfg = gcfg(tmp_path)
+    store = Store(cfg.store_path)
+    store.upsert_session("sX", 1, "/p", 5)
+    store.set_topic("sX", 77, "/p")
+    assert not listener._should_hint(cfg, store, gmsg("go", thread=77)["message"])
+
+
+def test_no_hint_in_dm_mode(tmp_path):
+    cfg = make_cfg(tmp_path)
+    store = Store(cfg.store_path)
+    store.upsert_session("sA", 1, "/a", 5)
+    assert not listener._should_hint(cfg, store, msg("hi")["message"])
 
 
 def callback(data, on_message=60, chat_id=1, cq_id="cq1"):

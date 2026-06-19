@@ -63,6 +63,15 @@ def thread_for(cfg, store, sid, cwd, live_sids, create_fn):
     return resolve_topic(store, sid, cwd, live_sids, create_fn)
 
 
+def ensure_topics(store, create_fn) -> None:
+    """Create a topic for every live session that lacks one (called on refresh,
+    so topics exist before the user types — no waiting for first Claude output)."""
+    live = [s["iterm_session_id"] for s in store.sessions()]
+    for sid in live:
+        sess = next(s for s in store.sessions() if s["iterm_session_id"] == sid)
+        resolve_topic(store, sid, sess.get("cwd", ""), live, create_fn)
+
+
 def session_of_topic(store, topic_id):
     """Inbound: which session owns this topic (for routing a reply)."""
     for sid, e in store.topics().items():

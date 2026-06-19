@@ -55,5 +55,18 @@ def test_resolve_topic_concurrent_same_cwd_gets_suffix(tmp_path):
     assert names == ["proj", "proj #2"]
 
 
+def test_ensure_topics_creates_for_each_live_session(tmp_path):
+    store = Store(tmp_path / "s.json")
+    store.upsert_session("sA", 1, "/a", 5)
+    store.upsert_session("sB", 2, "/b", 6)
+    created = []
+    group.ensure_topics(store, lambda n: created.append(n) or len(created))
+    assert sorted(created) == ["a", "b"]
+    assert store.topic_of("sA") and store.topic_of("sB")
+    # idempotent: second call creates nothing new
+    group.ensure_topics(store, lambda n: created.append(n) or 0)
+    assert sorted(created) == ["a", "b"]
+
+
 def test_session_of_topic_none_when_unknown(tmp_path):
     assert group.session_of_topic(Store(tmp_path / "s.json"), 5) is None
