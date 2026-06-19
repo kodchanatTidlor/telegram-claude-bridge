@@ -119,9 +119,17 @@ def test_group_rejects_other_member_and_chat(tmp_path):
                                    gmsg("x", 77, chat=-200)) is None   # other group
 
 
-def test_group_unknown_topic_no_route(tmp_path):
+def test_group_general_falls_back_to_active(tmp_path):
     cfg = gcfg(tmp_path)
     store = Store(cfg.store_path)
+    store.upsert_session("sA", 1, "/a", 5)            # active, no topic bound
+    sess, _ = listener.resolve_target(cfg, store, gmsg("hi", thread=None))
+    assert sess["iterm_session_id"] == "sA"           # General → active
+
+
+def test_group_no_session_no_route(tmp_path):
+    cfg = gcfg(tmp_path)
+    store = Store(cfg.store_path)                       # empty
     assert listener.resolve_target(cfg, store, gmsg("x", thread=999)) is None
 
 

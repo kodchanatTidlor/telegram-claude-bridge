@@ -204,6 +204,10 @@ def resolve_target(cfg, store, update):
         sid = group.session_of_topic(store, message.get("message_thread_id"))
         session = next((s for s in store.sessions()
                         if s["iterm_session_id"] == sid), None)
+        # General / no-topic-yet → fall back to the latest session, so you can
+        # talk before any topic exists.
+        if session is None:
+            session = store.active_session()
         return (session, text) if session else None
     reply = message.get("reply_to_message")
     session = None
