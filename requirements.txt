@@ -1,4 +1,5 @@
 httpx==0.27.2
 iterm2==2.7
 telegramify-markdown==0.5.4
+claude-swap==0.13.2   # provides the `cswap` CLI used by /usage
 pytest==8.3.3

@@ -13,8 +13,6 @@ class Config:
     store_path: Path
     flag_path: Path
     pid_path: Path
-    # Optional claude.ai session key (sk-ant-sid…) for official quota %.
-    session_key: str = ""
     # Defaulted so existing call sites / test fixtures need no change.
     gate_dir: Path = field(default=BASE_DIR / ".gate")
     busy_path: Path = field(default=BASE_DIR / ".busy")
@@ -45,7 +43,6 @@ def load_config() -> Config:
         bot_token=token,
         allowed_chat_id=int(chat),
         poll_timeout=int(os.environ.get("POLL_TIMEOUT", "50")),
-        session_key=os.environ.get("CLAUDE_SESSION_KEY", ""),
         store_path=Path(os.environ.get("STORE_PATH", BASE_DIR / ".store.json")),
         flag_path=BASE_DIR / ".enabled",
         pid_path=BASE_DIR / ".listener.pid",
