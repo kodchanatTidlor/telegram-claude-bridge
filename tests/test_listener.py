@@ -328,3 +328,81 @@ def test_callback_non_allowlisted_rejected(tmp_path):
     ok, answered, *_ = _run_cb(cfg, store, callback("y", chat_id=999))
     assert ok is True and answered == ["not allowed"]
     assert gate.take_answer(cfg, 60) is None
+
+
+def _usage_capture(cfg, available, fetch):
+    sent = []
+    orig_send = listener.send_message
+    orig_avail, orig_fetch = listener.cswap.available, listener.cswap.fetch
+    listener.send_message = lambda c, t, reply_markup=None: sent.append(t) or 1
+    listener.cswap.available = available
+    listener.cswap.fetch = fetch
+    try:
+        listener._send_usage(cfg)
+    finally:
+        listener.send_message = orig_send
+        listener.cswap.available = orig_avail
+        listener.cswap.fetch = orig_fetch
+    return sent
+
+
+def test_usage_uses_cswap_accounts(tmp_path):
+    cfg = make_cfg(tmp_path)
+    accts = [{"num": 1, "email": "a@x.com", "active": True,
+              "windows": {"5h": {"pct": 4, "reset": None, "in": None}}}]
+    sent = _usage_capture(cfg, lambda: True, lambda: accts)
+    assert sent and "a@x\\.com" in sent[0] and "📊" in sent[0]
+
+
+def test_usage_no_cswap_tells_user_to_install(tmp_path):
+    sent = _usage_capture(make_cfg(tmp_path), lambda: False, lambda: [])
+    assert sent and "cswap" in sent[0] and "ติดตั้ง" in sent[0]
+
+
+def test_usage_cswap_error_reports_no_fallback(tmp_path):
+    def boom():
+        raise RuntimeError("x")
+
+    sent = _usage_capture(make_cfg(tmp_path), lambda: True, boom)
+    assert sent and "error" in sent[0] and "Local" not in sent[0]
+
+
+def test_usage_empty_accounts(tmp_path):
+    sent = _usage_capture(make_cfg(tmp_path), lambda: True, lambda: [])
+    assert sent and "ไม่มี account" in sent[0]
+
+
+def test_callback_cswap_switches_and_rerenders(tmp_path):
+    cfg = make_cfg(tmp_path)
+    store = Store(cfg.store_path)
+    switched = []
+    orig_av, orig_sw, orig_fe = (listener.cswap.available,
+                                 listener.cswap.switch_to, listener.cswap.fetch)
+    listener.cswap.available = lambda: True
+    listener.cswap.switch_to = lambda ident: switched.append(ident)
+    listener.cswap.fetch = lambda: [{"num": 2, "email": "b@y.com",
+                                     "active": True, "windows": {}}]
+    try:
+        ok, answered, _, texts, *_ = _run_cb(cfg, store, callback("cswap:2"))
+    finally:
+        (listener.cswap.available, listener.cswap.switch_to,
+         listener.cswap.fetch) = orig_av, orig_sw, orig_fe
+    assert ok and switched == ["2"]                 # switched to account 2
+    assert texts and "b@y\\.com" in texts[0]        # usage re-rendered
+    assert answered == ["switched"]
+
+
+def test_callback_usage_refresh_no_switch(tmp_path):
+    cfg = make_cfg(tmp_path)
+    store = Store(cfg.store_path)
+    switched = []
+    orig_sw, orig_fe = listener.cswap.switch_to, listener.cswap.fetch
+    listener.cswap.switch_to = lambda ident: switched.append(ident)
+    listener.cswap.fetch = lambda: [{"num": 1, "email": "a@x.com",
+                                     "active": True, "windows": {}}]
+    try:
+        ok, answered, *_ = _run_cb(cfg, store, callback("usage"))
+    finally:
+        listener.cswap.switch_to, listener.cswap.fetch = orig_sw, orig_fe
+    assert ok and switched == []                     # refresh only, no switch
+    assert answered == ["refreshed"]

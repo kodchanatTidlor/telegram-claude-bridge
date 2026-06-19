@@ -5,7 +5,7 @@ import sys
 import time
 
 from bridge.busy import is_busy
-from bridge import commands, group, usage_api
+from bridge import commands, cswap, group
 from bridge.config import is_allowed, load_config
 from bridge.gate import resolve_pending
 from bridge.iterm import SHELL_JOB_NAMES, should_inject, strip_session_prefix
@@ -186,6 +186,16 @@ async def handle_callback(cfg, store, app, connection, update,
         else:
             answer_fn(cfg, cq_id, "gone")
         markup_fn(cfg, mid, commands.dashboard_keyboard(store))
+    elif data == "usage" or data.startswith("cswap:"):
+        try:
+            if data.startswith("cswap:"):
+                cswap.switch_to(data.split(":", 1)[1])
+            accounts = cswap.fetch()
+            text_fn(cfg, mid, commands.format_cswap(accounts),
+                    commands.usage_keyboard(accounts))
+            answer_fn(cfg, cq_id, "switched" if data != "usage" else "refreshed")
+        except Exception as exc:
+            answer_fn(cfg, cq_id, f"cswap error ({type(exc).__name__})")
     else:
         resolved = resolve_pending(cfg, mid, data) if mid else False
         answer_fn(cfg, cq_id, "got it" if resolved else "expired")
@@ -249,18 +259,21 @@ async def _inject(app, session_id, text, expected_pid, enter=True) -> bool:
 
 
 def _send_usage(cfg) -> None:
-    # No key → instructions (+ local estimate). Key → official %; on any error
-    # fall back to the local estimate so /usage always answers.
-    if not cfg.session_key:
-        send_message(cfg, commands.usage_help(cfg))
+    # Quota comes from cswap (all managed accounts at once). cswap is required —
+    # no fallback.
+    if not cswap.available():
+        send_message(cfg, "⚠️ cswap ไม่พบ — ติดตั้ง cswap ก่อนใช้ /usage")
         return
     try:
-        send_message(cfg, commands.format_official(
-            usage_api.fetch_usage(cfg.session_key)))
+        accounts = cswap.fetch()
     except Exception as exc:
-        send_message(cfg, "⚠️ usage fetch failed "
-                     f"\\({type(exc).__name__}\\) — key หมดอายุ?\n\n"
-                     + commands.build_usage_local(cfg))
+        send_message(cfg, f"⚠️ cswap error \\({type(exc).__name__}\\)")
+        return
+    if not accounts:
+        send_message(cfg, "⚠️ cswap ไม่มี account")
+        return
+    send_message(cfg, commands.format_cswap(accounts),
+                 reply_markup=commands.usage_keyboard(accounts))
 
 
 async def handle_bridge_command(cfg, store, app, update) -> bool:

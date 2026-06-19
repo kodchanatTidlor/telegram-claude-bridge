@@ -1,12 +1,6 @@
-from datetime import datetime, timezone
-
 from bridge.config import Config
 from bridge.store import Store
 from bridge import commands, busy, gate
-
-
-def _iso(epoch):
-    return datetime.fromtimestamp(epoch, timezone.utc).isoformat()
 
 
 def make_cfg(tmp_path):
@@ -29,62 +23,43 @@ def test_usage_command_registered():
     assert commands.is_command("/usage") and commands.resolve("/usage") == "/usage"
 
 
-def test_build_usage_shows_5h_tokens(tmp_path):
-    import json
-    from datetime import datetime, timezone
-    proj = tmp_path / "projects" / "p"
-    proj.mkdir(parents=True)
-    now = 2_000_000.0
-    row = {"timestamp": datetime.fromtimestamp(now - 60, timezone.utc).isoformat(),
-           "message": {"role": "assistant", "model": "claude-opus-4-8",
-                       "usage": {"output_tokens": 1500, "input_tokens": 0,
-                                 "cache_read_input_tokens": 0,
-                                 "cache_creation_input_tokens": 0}}}
-    (proj / "a.jsonl").write_text(json.dumps(row))
-    cfg = Config(bot_token="t", allowed_chat_id=1, poll_timeout=1,
-                 store_path=tmp_path / "s.json", flag_path=tmp_path / ".e",
-                 pid_path=tmp_path / ".p", projects_dir=tmp_path / "projects")
-    out = commands.build_usage_local(cfg, now=now)
-    assert "usage" in out.lower() and "1\\.5k" in out and "last 5h" in out
+def test_severity_buckets():
+    assert commands._severity(0) == "⚪️"             # <5
+    assert commands._severity(4) == "⚪️"
+    assert commands._severity(5) == "🟢"             # <50
+    assert commands._severity(49) == "🟢"
+    assert commands._severity(50) == "🟡"            # <70
+    assert commands._severity(69) == "🟡"
+    assert commands._severity(70) == "🟠"            # <90
+    assert commands._severity(89) == "🟠"
+    assert commands._severity(90) == "🔴"            # ≥90
+    assert commands._severity(100) == "🔴"
 
 
-def test_usage_help_has_steps_and_local(tmp_path):
-    cfg = Config(bot_token="t", allowed_chat_id=1, poll_timeout=1,
-                 store_path=tmp_path / "s.json", flag_path=tmp_path / ".e",
-                 pid_path=tmp_path / ".p", projects_dir=tmp_path / "none")
-    out = commands.usage_help(cfg, now=0)
-    assert "SESSION" in out and "sk\\-ant\\-sid" in out
-    assert "Local usage" in out                     # still shows estimate
+def test_format_cswap_renders_accounts_and_severity():
+    accts = [
+        {"email": "a@x.com", "active": False,
+         "windows": {"5h": {"pct": 2, "reset": None, "in": None},
+                     "7d": {"pct": 60, "reset": "Jun 22 13:59", "in": "3d 0h"}}},
+        {"email": "b@y.com", "active": True,
+         "windows": {"5h": {"pct": 95, "reset": "16:59", "in": "3h"}}},
+    ]
+    out = commands.format_cswap(accts)
+    assert "2 account" in out
+    assert "a@x\\.com" in out and "b@y\\.com" in out
+    assert "✅" in out                               # active flagged
+    assert "⚪️ 5h: 2" in out and "🟡 7d: 60" in out   # buckets
+    assert "🔴 5h: 95" in out                        # ≥90 red
+    assert "reset Jun 22 13:59" in out and "in 3d 0h" in out
 
 
-def test_format_official_uses_api_severity_from_limits():
-    now = 1_000_000.0
-    data = {"limits": [
-        {"group": "session", "percent": 4, "severity": "normal",
-         "resets_at": _iso(now + 2 * 3600 + 600)},        # +2h10m
-        {"group": "weekly", "percent": 85, "severity": "warning",
-         "resets_at": _iso(now + 86400)},
-    ]}
-    out = commands.format_official(data, now=now)
-    assert "🟢 5h: 4" in out and "in 2h 10m" in out       # API severity normal
-    assert "🟡 7d: 85" in out                             # API severity warning
-    assert "reset" in out
-
-
-def test_format_official_unknown_severity_is_red():
-    data = {"limits": [{"group": "session", "percent": 99,
-                        "severity": "critical", "resets_at": ""}]}
-    assert "🔴 5h: 99" in commands.format_official(data, now=0)
-
-
-def test_format_official_fallback_threshold_without_limits():
-    out = commands.format_official({"five_hour": {"utilization": 60}}, now=0)
-    assert "🟡 5h: 60" in out                             # threshold fallback
-
-
-def test_format_official_raw_fallback():
-    out = commands.format_official({"weird": "shape"}, now=0)
-    assert "raw" in out and "weird" in out          # dumped for spiking
+def test_usage_keyboard_one_button_per_account_plus_refresh():
+    accts = [{"num": 1, "email": "a@x.com", "active": False},
+             {"num": 2, "email": "b@y.com", "active": True}]
+    kb = commands.usage_keyboard(accts)["inline_keyboard"]
+    assert kb[0][0]["callback_data"] == "cswap:1" and "🔀" in kb[0][0]["text"]
+    assert kb[1][0]["callback_data"] == "cswap:2" and "✅" in kb[1][0]["text"]
+    assert kb[2][0]["callback_data"] == "usage"          # refresh row
 
 
 def test_resolve_button_labels_to_commands():

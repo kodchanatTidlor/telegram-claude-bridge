@@ -1,141 +1,63 @@
-import time
-from datetime import datetime
-
 from bridge.busy import is_busy
 from bridge.recap import escape_md_v2
-from bridge.usage import latest_model, usage_since
+from bridge.usage import latest_model
 
 # Bridge-local commands: handled by the listener, never injected into Claude.
 COMMANDS = {
     "/status": "bridge status + session menu",
-    "/usage": "token usage in the last 5h (all sessions)",
+    "/usage": "quota % per account (via cswap)",
     "/screen": "snapshot the active session's screen",
     "/cancel": "stop Claude (send ESC)",
     "/help": "list bridge commands",
 }
 SCREEN_LINES = 40
-USAGE_WINDOW = 5 * 3600   # the ~5-hour quota block ccusage tracks
 
 
-def _k(n) -> str:
-    return f"{n / 1000:.1f}k" if n >= 1000 else str(n)
+def _severity(pct) -> str:
+    """Quota severity buckets: ⚪️<5 🟢<50 🟡<70 🟠<90 🔴≥90."""
+    if pct < 5:
+        return "⚪️"
+    if pct < 50:
+        return "🟢"
+    if pct < 70:
+        return "🟡"
+    if pct < 90:
+        return "🟠"
+    return "🔴"
 
 
-def build_usage_local(cfg, now=None) -> str:
-    """Permission-free fallback: 5h token totals from local transcripts."""
-    now = time.time() if now is None else now
-    u = usage_since(cfg.projects_dir, now - USAGE_WINDOW)
-    return "\n".join([
-        "📊 *Local usage* — last 5h \\(tokens, all sessions\\)",
-        f"output: {escape_md_v2(_k(u['output']))} · "
-        f"input: {escape_md_v2(_k(u['input']))}",
-        f"cache: {escape_md_v2(_k(u['cache_read'] + u['cache_creation']))} · "
-        f"total: {escape_md_v2(_k(u['total']))}",
-    ])
-
-
-def usage_help(cfg, now=None) -> str:
-    """No session key set — tell the user how to add one for official %, and
-    still show the local token estimate so /usage isn't empty."""
-    return "\n".join([
-        "🔑 *No CLAUDE\\_SESSION\\_KEY set*",
-        escape_md_v2("ดู quota % ทางการ ต้องใส่ session key:"),
-        escape_md_v2("1. เปิด claude.ai → DevTools → Application → Cookies"),
-        escape_md_v2("2. ก็อปค่า sessionKey (sk-ant-sid…)"),
-        escape_md_v2("3. ใส่ใน .env: CLAUDE_SESSION_KEY=sk-ant-sid…  แล้ว ♻️ Reload"),
-        "",
-        build_usage_local(cfg, now),
-    ])
-
-
-def _first(d, *keys):
-    for k in keys:
-        if isinstance(d, dict) and d.get(k) is not None:
-            return d[k]
-    return None
-
-
-# severity comes straight from the claude.ai API (limits[].severity).
-_SEV_EMOJI = {"normal": "🟢", "warning": "🟡", "critical": "🔴"}
-
-
-def _emoji(severity) -> str:
-    return _SEV_EMOJI.get(str(severity).lower(), "🔴")   # unknown → red (safe)
-
-
-def _severity(pct) -> str:   # threshold fallback when the API omits severity
-    return "🔴" if pct >= 80 else "🟡" if pct >= 50 else "🟢"
-
-
-def _reset_epoch(window):
-    iso = _first(window, "resets_at", "reset_at", "resetsAt", "resets")
-    try:
-        return datetime.fromisoformat(str(iso).replace("Z", "+00:00")).timestamp()
-    except (ValueError, TypeError, AttributeError):
-        return None
-
-
-def _fmt_in(epoch, now) -> str:
-    secs = int(epoch - now)
-    if secs <= 0:
-        return "now"
-    h, m = divmod(secs // 60, 60)
-    return f"{h}h {m}m" if h else f"{m}m"
-
-
-def _window_line(label, emoji, pct, reset_window, now, with_in) -> str:
-    if pct is None:
-        return ""
-    parts = [f"{emoji} {label}: {escape_md_v2(str(pct))}\\%"]
-    rst = _reset_epoch(reset_window)
-    if rst:
-        at = datetime.fromtimestamp(rst).strftime(
-            "%H:%M" if label == "5h" else "%a %H:%M")
-        parts.append(f"reset {escape_md_v2(at)}")
-        if with_in:
-            parts.append(f"in {escape_md_v2(_fmt_in(rst, now))}")
+def _cswap_window(label, win) -> str:
+    parts = [f"{_severity(win['pct'])} {label}: {escape_md_v2(str(win['pct']))}\\%"]
+    if win.get("reset"):
+        parts.append(f"reset {escape_md_v2(win['reset'])}")
+    if win.get("in"):
+        parts.append(f"in {escape_md_v2(win['in'])}")
     return " · ".join(parts)
 
 
-# claude.ai limits[].group → our window label
-_GROUP_LABEL = {"session": "5h", "weekly": "7d"}
+def format_cswap(accounts) -> str:
+    """Render every cswap-managed account's 5h/7d quota with severity emoji.
+    The active account is flagged ✅."""
+    lines = [f"📊 *Usage* — {len(accounts)} account\\(s\\)"]
+    for a in accounts:
+        flag = " ✅" if a.get("active") else ""
+        lines.append(f"\n👤 *{escape_md_v2(a['email'])}*{flag}")
+        for label in ("5h", "7d"):
+            win = a.get("windows", {}).get(label)
+            if win:
+                lines.append(_cswap_window(label, win))
+    return "\n".join(lines)
 
 
-def format_official(data, now=None) -> str:
-    """Render 5h + 7d windows with severity straight from the API
-    (limits[].severity). Falls back to the five_hour/seven_day blocks with
-    threshold severity, then to a raw dump for spiking."""
-    import json
-    now = time.time() if now is None else now
-    lines = ["📊 *Usage*"]
-    by_label = {}
+def usage_keyboard(accounts):
+    # One button per account to switch the active Claude account (cswap:<num>);
+    # the active one is flagged ✅. Plus a refresh of the usage view.
+    rows = [[{"text": ("✅ " if a.get("active") else "🔀 ") + a["email"],
+              "callback_data": f"cswap:{a['num']}"}] for a in accounts]
+    rows.append([{"text": "🔄 Refresh", "callback_data": "usage"}])
+    return {"inline_keyboard": rows}
 
-    limits = data.get("limits") if isinstance(data, dict) else None
-    if isinstance(limits, list):
-        for lim in limits:
-            label = _GROUP_LABEL.get(lim.get("group"))
-            if label and label not in by_label:
-                by_label[label] = _window_line(
-                    label, _emoji(lim.get("severity")), lim.get("percent"),
-                    lim, now, with_in=(label == "5h"))
 
-    # fallback: top-level blocks with threshold-based severity
-    for label, key in (("5h", "five_hour"), ("7d", "seven_day")):
-        if label not in by_label:
-            w = _first(data, key)
-            pct = _first(w, "utilization", "percent") if w else None
-            if pct is not None:
-                by_label[label] = _window_line(label, _severity(pct), pct, w,
-                                               now, with_in=(label == "5h"))
-
-    for label in ("5h", "7d"):
-        if by_label.get(label):
-            lines.append(by_label[label])
-
-    if len(lines) > 1:
-        return "\n".join(lines)
-    raw = json.dumps(data)[:1500].replace("\\", "\\\\").replace("`", "\\`")
-    return f"📊 *Usage \\(raw — refine parser\\)*\n```\n{raw}\n```"
 # Reply-keyboard buttons send their label verbatim, so raw "/status" looks odd.
 # Show a friendly label and map it back to the command.
 # Order = reply-keyboard layout (left→right); Stop sits far right.
