@@ -310,12 +310,25 @@ def _should_hint(cfg, store, message) -> bool:
     return bool(store.sessions())   # no sessions at all → stay silent
 
 
-async def _typing_loop(cfg) -> None:
+def _typing_thread(cfg, store):
+    """Thread to show typing in: the active session's topic (group), else None.
+
+    ponytail: busy is a single global flag, so typing follows the active
+    session only. Per-session busy state would need per-topic flags.
+    """
+    if not cfg.group_id:
+        return None
+    active = store.active_session()
+    return store.topic_of(active["iterm_session_id"]) if active else None
+
+
+async def _typing_loop(cfg, store) -> None:
     # Show a typing bubble while Claude is working; its absence is the "your
     # turn" signal, so no explicit waiting message is needed.
     while True:
         if is_busy(cfg):
-            await asyncio.to_thread(send_chat_action, cfg)
+            await asyncio.to_thread(send_chat_action, cfg,
+                                    message_thread_id=_typing_thread(cfg, store))
         await asyncio.sleep(TYPING_EVERY)
 
 
@@ -330,7 +343,7 @@ async def _amain(connection) -> None:
     # Set the persistent reply keyboard (quick commands) once; it sticks.
     await asyncio.to_thread(send_message, cfg, "🤖 bridge up",
                             reply_markup=commands.command_keyboard(), silent=True)
-    typing = asyncio.ensure_future(_typing_loop(cfg))
+    typing = asyncio.ensure_future(_typing_loop(cfg, store))
     _log(f"listener up (pid {os.getpid()}), long-polling Telegram...")
 
     try:

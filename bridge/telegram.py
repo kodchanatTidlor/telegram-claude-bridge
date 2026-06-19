@@ -56,10 +56,14 @@ def _best_effort(method, payload) -> None:
     return _send
 
 
-def send_chat_action(cfg, action="typing") -> None:
+def send_chat_action(cfg, action="typing", message_thread_id=None) -> None:
     # A typing bubble lasts ~5s, so the listener repeats it while Claude works.
-    _best_effort("sendChatAction",
-                 lambda c: {"chat_id": _chat(c), "action": action})(cfg)
+    def payload(c):
+        p = {"chat_id": _chat(c), "action": action}
+        if message_thread_id is not None:
+            p["message_thread_id"] = message_thread_id
+        return p
+    _best_effort("sendChatAction", payload)(cfg)
 
 
 def answer_callback(cfg, callback_query_id, text="") -> None:
