@@ -136,3 +136,9 @@ def test_newmenu_indexes_cwds_with_back(tmp_path):
     assert kb[0][0]["callback_data"] == "new:0" and "proj-a" in kb[0][0]["text"]
     assert kb[1][0]["callback_data"] == "new:1"
     assert kb[-1][0]["callback_data"] == "back"
+
+
+def test_reload_msg_escapes_cwd_and_email():
+    out = commands.reload_msg("/home/u/proj", "a.b@x.com")
+    assert "resumed" in out and "`proj`" in out
+    assert "a\\.b@x\\.com" in out                     # md-escaped account
