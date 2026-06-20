@@ -452,14 +452,15 @@ def test_cswap_switch_reloads_live_sessions(tmp_path):
             answer_fn=lambda c, i, t="": answered.append(t),
             markup_fn=lambda c, m, mk=None: None,
             text_fn=lambda c, m, t, mk=None: texts.append(t),
-            send_fn=lambda c, t: sent.append(t) or 1))
+            send_fn=lambda c, t, message_thread_id=None: sent.append((t, message_thread_id)) or 1))
     finally:
         (listener.cswap.switch_to, listener.cswap.fetch,
          listener.RELOAD_PAUSE) = orig_sw, orig_fe, orig_pause
     assert ok and answered == ["switched"]
     assert "/exit" in s.sent                              # Claude restarted
     assert any("claude --resume UUID1" in t for t in s.sent)
-    assert sent and "b@y\\.com" in sent[0]                # account reported
+    assert sent and "b@y\\.com" in sent[0][0]             # account reported
+    assert sent[0][1] is None                             # DM mode: no thread
     assert store.active_session()["job_pid"] is None      # pid cleared
 
 
@@ -480,7 +481,39 @@ def test_cswap_switch_skips_sessions_without_transcript(tmp_path):
             answer_fn=lambda c, i, t="": None,
             markup_fn=lambda c, m, mk=None: None,
             text_fn=lambda c, m, t, mk=None: None,
-            send_fn=lambda c, t: sent.append(t) or 1))
+            send_fn=lambda c, t, message_thread_id=None: sent.append((t, message_thread_id)) or 1))
     finally:
         listener.cswap.switch_to, listener.cswap.fetch = orig_sw, orig_fe
     assert s.sent == [] and sent == []                    # nothing to resume
+
+
+def test_cswap_switch_posts_resume_to_session_topic(tmp_path):
+    import dataclasses
+    cfg = dataclasses.replace(make_cfg(tmp_path), group_id=-100)
+    store = Store(cfg.store_path)
+    store.upsert_session("w:s1", 99, "/proj", 5)
+    store.set_transcript("w:s1", "/x/projects/p/UUID1.jsonl")
+    store.set_topic("w:s1", 4242, "/proj")                 # bound to its topic
+    s = _SendSession("s1", job_name="claude", job_pid=99)
+    app = _FakeApp([s])
+    sent = []
+    orig_sw, orig_fe, orig_pause = (listener.cswap.switch_to,
+                                    listener.cswap.fetch, listener.RELOAD_PAUSE)
+    listener.cswap.switch_to = lambda i: None
+    listener.cswap.fetch = lambda: [{"num": 2, "email": "b@y.com",
+                                     "active": True, "windows": {}}]
+    listener.RELOAD_PAUSE = 0
+    cb = callback("cswap:2")
+    cb["callback_query"]["message"]["chat"] = {"id": -100}  # group auth
+    try:
+        asyncio.run(listener.handle_callback(
+            cfg, store, app, "CONN", cb,
+            answer_fn=lambda c, i, t="": None,
+            markup_fn=lambda c, m, mk=None: None,
+            text_fn=lambda c, m, t, mk=None: None,
+            send_fn=lambda c, t, message_thread_id=None: sent.append((t, message_thread_id)) or 1,
+            topic_fn=lambda c, n: 999))
+    finally:
+        (listener.cswap.switch_to, listener.cswap.fetch,
+         listener.RELOAD_PAUSE) = orig_sw, orig_fe, orig_pause
+    assert sent and sent[0][1] == 4242                     # routed to its topic

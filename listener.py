@@ -98,19 +98,25 @@ async def _reload_claude(app, session, uuid, pause=None) -> bool:
     return await _send_raw(app, sid, cmd)
 
 
-async def _reload_all(app, store, cfg, email, send_fn=send_message) -> None:
+async def _reload_all(app, store, cfg, email, send_fn=send_message,
+                      topic_fn=create_forum_topic) -> None:
     """After switching account, restart every live Claude (so each picks up the
-    new account) and resume its session — one status line per session."""
+    new account) and resume its session — one status line per session, posted to
+    that session's own topic (group mode), not the General view."""
+    live = [s["iterm_session_id"] for s in store.sessions()]
     for sess in store.sessions():
         sid = sess["iterm_session_id"]
+        cwd = sess.get("cwd", "")
         uuid = _session_uuid(store, sid)
         if not uuid:
             continue   # never streamed → no session id to resume
         if await _reload_claude(app, sess, uuid):
             # New pid unknown → clear so injection passes until a hook refreshes.
-            store.upsert_session(sid, None, sess.get("cwd", ""),
-                                 sess.get("recap_message_id"))
-            send_fn(cfg, commands.reload_msg(sess.get("cwd", ""), email))
+            store.upsert_session(sid, None, cwd, sess.get("recap_message_id"))
+            thread = group.thread_for(cfg, store, sid, cwd, live,
+                                      lambda n: topic_fn(cfg, n))
+            send_fn(cfg, commands.reload_msg(cwd, email),
+                    message_thread_id=thread)
 
 
 def _is_shell(job_name) -> bool:
@@ -245,7 +251,7 @@ async def handle_callback(cfg, store, app, connection, update,
             # New account is now active — restart every live Claude so they pick
             # it up, resuming each session.
             email = next((a["email"] for a in accounts if a.get("active")), "?")
-            await _reload_all(app, store, cfg, email, send_fn)
+            await _reload_all(app, store, cfg, email, send_fn, topic_fn)
             text_fn(cfg, mid, commands.format_cswap(accounts),
                     commands.usage_keyboard(accounts))
             answer_fn(cfg, cq_id, "switched")
