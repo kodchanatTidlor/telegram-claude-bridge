@@ -3,6 +3,7 @@ import os
 import shlex
 import sys
 import time
+from pathlib import Path
 
 from bridge.busy import is_busy
 from bridge import commands, cswap, group
@@ -20,6 +21,7 @@ ESC = "\x1b"   # interrupt Claude's current generation (soft stop)
 NOT_RUNNING = "claude not running in this session — cancelled"
 TYPING_EVERY = 4.0   # the typing bubble lasts ~5s; refresh just under that
 GROUP_HINT = "💬 กรุณาเลือก topic ที่จะคุยด้วย"   # General/All ไม่ส่งต่อ
+RELOAD_PAUSE = 2.0   # wait after /exit for Claude to drop back to the shell
 
 
 def _log(msg: str) -> None:
@@ -59,6 +61,56 @@ async def _open_session(connection, cwd):
     session = window.current_tab.current_session
     await session.async_send_text(f"cd {shlex.quote(cwd)} && claude\r")
     return session.session_id
+
+
+async def _send_raw(app, session_id, text) -> bool:
+    """Send text to a pane WITHOUT the should_inject guard — used to launch a
+    command at the shell (where the guard would block, Claude not running)."""
+    await app.async_refresh()
+    target = strip_session_prefix(session_id)
+    for window in app.windows:
+        for tab in window.tabs:
+            for session in tab.sessions:
+                if strip_session_prefix(session.session_id) == target:
+                    await session.async_send_text(text)
+                    return True
+    return False
+
+
+def _session_uuid(store, sid):
+    """Claude's session id == the transcript filename stem (…/<UUID>.jsonl)."""
+    tpath = store.get_transcript(sid)
+    return Path(tpath).stem if tpath else None
+
+
+async def _reload_claude(app, session, uuid, pause=None) -> bool:
+    """Quit Claude in its pane (/exit → shell), then relaunch resuming the same
+    session. Returns False if Claude isn't live in the pane."""
+    pause = RELOAD_PAUSE if pause is None else pause
+    sid = session["iterm_session_id"]
+    if not await _inject(app, sid, "/exit", session.get("job_pid")):
+        return False
+    await asyncio.sleep(pause)   # let Claude drop back to the shell
+    cmd = f"claude --resume {shlex.quote(uuid)}\r"
+    cwd = session.get("cwd", "")
+    if cwd:
+        cmd = f"cd {shlex.quote(cwd)} && " + cmd
+    return await _send_raw(app, sid, cmd)
+
+
+async def _reload_all(app, store, cfg, email, send_fn=send_message) -> None:
+    """After switching account, restart every live Claude (so each picks up the
+    new account) and resume its session — one status line per session."""
+    for sess in store.sessions():
+        sid = sess["iterm_session_id"]
+        uuid = _session_uuid(store, sid)
+        if not uuid:
+            continue   # never streamed → no session id to resume
+        if await _reload_claude(app, sess, uuid):
+            # New pid unknown → clear so injection passes until a hook refreshes.
+            store.upsert_session(sid, None, sess.get("cwd", ""),
+                                 sess.get("recap_message_id"))
+            send_fn(cfg, commands.reload_msg(sess.get("cwd", ""), email))
 
 
 def _is_shell(job_name) -> bool:
@@ -186,14 +238,17 @@ async def handle_callback(cfg, store, app, connection, update,
         else:
             answer_fn(cfg, cq_id, "gone")
         markup_fn(cfg, mid, commands.dashboard_keyboard(store))
-    elif data == "usage" or data.startswith("cswap:"):
+    elif data.startswith("cswap:"):
         try:
-            if data.startswith("cswap:"):
-                cswap.switch_to(data.split(":", 1)[1])
+            cswap.switch_to(data.split(":", 1)[1])
             accounts = cswap.fetch()
+            # New account is now active — restart every live Claude so they pick
+            # it up, resuming each session.
+            email = next((a["email"] for a in accounts if a.get("active")), "?")
+            await _reload_all(app, store, cfg, email, send_fn)
             text_fn(cfg, mid, commands.format_cswap(accounts),
                     commands.usage_keyboard(accounts))
-            answer_fn(cfg, cq_id, "switched" if data != "usage" else "refreshed")
+            answer_fn(cfg, cq_id, "switched")
         except Exception as exc:
             answer_fn(cfg, cq_id, f"cswap error ({type(exc).__name__})")
     else:

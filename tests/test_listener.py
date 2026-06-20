@@ -392,17 +392,95 @@ def test_callback_cswap_switches_and_rerenders(tmp_path):
     assert answered == ["switched"]
 
 
-def test_callback_usage_refresh_no_switch(tmp_path):
+
+class _SendSession:
+    def __init__(self, sid, job_name="claude", job_pid=99):
+        self.session_id = sid
+        self._jn, self._jp = job_name, job_pid
+        self.sent = []
+
+    async def async_get_variable(self, name):
+        return self._jn if name == "jobName" else str(self._jp)
+
+    async def async_send_text(self, t):
+        self.sent.append(t)
+
+
+def test_session_uuid_from_transcript(tmp_path):
+    store = Store(tmp_path / "s.json")
+    store.upsert_session("w:s1", 1, "/p", 5)
+    store.set_transcript("w:s1", "/home/u/.claude/projects/x/ABC-123.jsonl")
+    assert listener._session_uuid(store, "w:s1") == "ABC-123"
+    assert listener._session_uuid(store, "w:none") is None
+
+
+def test_reload_claude_exits_then_resumes(tmp_path):
+    s = _SendSession("s1", job_name="claude", job_pid=99)
+    app = _FakeApp([s])
+    session = {"iterm_session_id": "w:s1", "cwd": "/proj", "job_pid": 99}
+    ok = asyncio.run(listener._reload_claude(app, session, "UUID9", pause=0))
+    assert ok
+    assert s.sent[0] == "/exit"                       # quit Claude first
+    assert any("claude --resume UUID9" in t and "cd /proj" in t for t in s.sent)
+
+
+def test_reload_claude_false_when_not_running(tmp_path):
+    s = _SendSession("s1", job_name="-zsh", job_pid=99)   # shell, not Claude
+    app = _FakeApp([s])
+    session = {"iterm_session_id": "w:s1", "cwd": "/proj", "job_pid": 99}
+    ok = asyncio.run(listener._reload_claude(app, session, "UUID9", pause=0))
+    assert ok is False                                 # should_inject blocks shell
+
+
+def test_cswap_switch_reloads_live_sessions(tmp_path):
     cfg = make_cfg(tmp_path)
     store = Store(cfg.store_path)
-    switched = []
+    store.upsert_session("w:s1", 99, "/proj", 5)
+    store.set_transcript("w:s1", "/x/projects/p/UUID1.jsonl")
+    s = _SendSession("s1", job_name="claude", job_pid=99)
+    app = _FakeApp([s])
+    sent, answered, texts = [], [], []
+    orig_sw, orig_fe, orig_pause = (listener.cswap.switch_to,
+                                    listener.cswap.fetch, listener.RELOAD_PAUSE)
+    listener.cswap.switch_to = lambda i: None
+    listener.cswap.fetch = lambda: [{"num": 2, "email": "b@y.com",
+                                     "active": True, "windows": {}}]
+    listener.RELOAD_PAUSE = 0
+    try:
+        ok = asyncio.run(listener.handle_callback(
+            cfg, store, app, "CONN", callback("cswap:2"),
+            answer_fn=lambda c, i, t="": answered.append(t),
+            markup_fn=lambda c, m, mk=None: None,
+            text_fn=lambda c, m, t, mk=None: texts.append(t),
+            send_fn=lambda c, t: sent.append(t) or 1))
+    finally:
+        (listener.cswap.switch_to, listener.cswap.fetch,
+         listener.RELOAD_PAUSE) = orig_sw, orig_fe, orig_pause
+    assert ok and answered == ["switched"]
+    assert "/exit" in s.sent                              # Claude restarted
+    assert any("claude --resume UUID1" in t for t in s.sent)
+    assert sent and "b@y\\.com" in sent[0]                # account reported
+    assert store.active_session()["job_pid"] is None      # pid cleared
+
+
+def test_cswap_switch_skips_sessions_without_transcript(tmp_path):
+    cfg = make_cfg(tmp_path)
+    store = Store(cfg.store_path)
+    store.upsert_session("w:s1", 99, "/proj", 5)          # no transcript set
+    s = _SendSession("s1", job_name="claude", job_pid=99)
+    app = _FakeApp([s])
+    sent = []
     orig_sw, orig_fe = listener.cswap.switch_to, listener.cswap.fetch
-    listener.cswap.switch_to = lambda ident: switched.append(ident)
+    listener.cswap.switch_to = lambda i: None
     listener.cswap.fetch = lambda: [{"num": 1, "email": "a@x.com",
                                      "active": True, "windows": {}}]
     try:
-        ok, answered, *_ = _run_cb(cfg, store, callback("usage"))
+        asyncio.run(listener.handle_callback(
+            cfg, store, app, "CONN", callback("cswap:1"),
+            answer_fn=lambda c, i, t="": None,
+            markup_fn=lambda c, m, mk=None: None,
+            text_fn=lambda c, m, t, mk=None: None,
+            send_fn=lambda c, t: sent.append(t) or 1))
     finally:
         listener.cswap.switch_to, listener.cswap.fetch = orig_sw, orig_fe
-    assert ok and switched == []                     # refresh only, no switch
-    assert answered == ["refreshed"]
+    assert s.sent == [] and sent == []                    # nothing to resume

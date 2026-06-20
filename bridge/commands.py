@@ -49,12 +49,18 @@ def format_cswap(accounts) -> str:
     return "\n".join(lines)
 
 
+def reload_msg(cwd, email) -> str:
+    """Per-session line after a switch-account reload: which project resumed
+    and on which Claude account it now runs."""
+    return (f"♻️ resumed `{escape_md_v2(_base(cwd))}` · "
+            f"account: {escape_md_v2(email)}")
+
+
 def usage_keyboard(accounts):
     # One button per account to switch the active Claude account (cswap:<num>);
-    # the active one is flagged ✅. Plus a refresh of the usage view.
+    # the active one is flagged ✅.
     rows = [[{"text": ("✅ " if a.get("active") else "🔀 ") + a["email"],
               "callback_data": f"cswap:{a['num']}"}] for a in accounts]
-    rows.append([{"text": "🔄 Refresh", "callback_data": "usage"}])
     return {"inline_keyboard": rows}
 
 
