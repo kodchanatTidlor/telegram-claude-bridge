@@ -53,13 +53,13 @@ def test_format_cswap_renders_accounts_and_severity():
     assert "reset Jun 22 13:59" in out and "in 3d 0h" in out
 
 
-def test_usage_keyboard_one_button_per_account_plus_refresh():
+def test_usage_keyboard_one_button_per_account():
     accts = [{"num": 1, "email": "a@x.com", "active": False},
              {"num": 2, "email": "b@y.com", "active": True}]
     kb = commands.usage_keyboard(accts)["inline_keyboard"]
+    assert len(kb) == 2                                   # no refresh row
     assert kb[0][0]["callback_data"] == "cswap:1" and "🔀" in kb[0][0]["text"]
     assert kb[1][0]["callback_data"] == "cswap:2" and "✅" in kb[1][0]["text"]
-    assert kb[2][0]["callback_data"] == "usage"          # refresh row
 
 
 def test_resolve_button_labels_to_commands():

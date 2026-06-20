@@ -319,21 +319,6 @@ def test_callback_cswap_switches_and_rerenders(tmp_path):
     assert answered == ["switched"]
 
 
-def test_callback_usage_refresh_no_switch(tmp_path):
-    cfg = make_cfg(tmp_path)
-    store = Store(cfg.store_path)
-    switched = []
-    orig_sw, orig_fe = listener.cswap.switch_to, listener.cswap.fetch
-    listener.cswap.switch_to = lambda ident: switched.append(ident)
-    listener.cswap.fetch = lambda: [{"num": 1, "email": "a@x.com",
-                                     "active": True, "windows": {}}]
-    try:
-        ok, answered, *_ = _run_cb(cfg, store, callback("usage"))
-    finally:
-        listener.cswap.switch_to, listener.cswap.fetch = orig_sw, orig_fe
-    assert ok and switched == []                     # refresh only, no switch
-    assert answered == ["refreshed"]
-
 
 class _SendSession:
     def __init__(self, sid, job_name="claude", job_pid=99):

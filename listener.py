@@ -224,20 +224,17 @@ async def handle_callback(cfg, store, app, connection, update,
         else:
             answer_fn(cfg, cq_id, "gone")
         markup_fn(cfg, mid, commands.dashboard_keyboard(store))
-    elif data == "usage" or data.startswith("cswap:"):
+    elif data.startswith("cswap:"):
         try:
-            switching = data.startswith("cswap:")
-            if switching:
-                cswap.switch_to(data.split(":", 1)[1])
+            cswap.switch_to(data.split(":", 1)[1])
             accounts = cswap.fetch()
-            if switching:
-                # New account is now active — restart every live Claude so they
-                # pick it up, resuming each session.
-                email = next((a["email"] for a in accounts if a.get("active")), "?")
-                await _reload_all(app, store, cfg, email, send_fn)
+            # New account is now active — restart every live Claude so they pick
+            # it up, resuming each session.
+            email = next((a["email"] for a in accounts if a.get("active")), "?")
+            await _reload_all(app, store, cfg, email, send_fn)
             text_fn(cfg, mid, commands.format_cswap(accounts),
                     commands.usage_keyboard(accounts))
-            answer_fn(cfg, cq_id, "switched" if switching else "refreshed")
+            answer_fn(cfg, cq_id, "switched")
         except Exception as exc:
             answer_fn(cfg, cq_id, f"cswap error ({type(exc).__name__})")
     else:
