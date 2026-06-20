@@ -69,6 +69,11 @@ def test_resolve_button_labels_to_commands():
     assert commands.resolve("nope") is None
 
 
+def test_resolve_strips_botname_suffix():
+    assert commands.resolve("/screen@john_junoir_bot") == "/screen"
+    assert commands.resolve("/cancel@some_bot arg") == "/cancel"
+
+
 def test_command_keyboard_is_commands_only(tmp_path):
     kb = commands.command_keyboard()["keyboard"]
     labels = [b["text"] for row in kb for b in row]

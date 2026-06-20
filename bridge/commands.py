@@ -76,7 +76,7 @@ def resolve(text):
     t = (text or "").strip()
     if t in BUTTONS:
         return BUTTONS[t]
-    head = t.split(" ", 1)[0]
+    head = t.split(" ", 1)[0].split("@", 1)[0]   # strip @botname suffix (group mode)
     return head if head in COMMANDS else None
 
 
