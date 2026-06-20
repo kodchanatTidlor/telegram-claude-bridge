@@ -97,7 +97,7 @@ def callback(data, on_message=60, chat_id=1, cq_id="cq1"):
 def _run_cb(cfg, store, update, new_sid="newGUID"):
     opened, pruned, sent, reloaded = [], [], [], []
 
-    async def fake_open(conn, cwd):
+    async def fake_open(app, conn, st, cwd):
         opened.append(cwd)
         return new_sid
 

@@ -43,11 +43,30 @@ def handle_gate_reply(cfg, update) -> bool:
     return resolve_pending(cfg, rid, message.get("text", ""))
 
 
-async def _open_session(connection, cwd):
-    """Open a new iTerm window, launch Claude in cwd, return its session id."""
+async def _find_session(app, sid):
+    """Locate an iTerm2 Session object by store sid (prefix-stripped match)."""
+    await app.async_refresh()
+    target = strip_session_prefix(sid)
+    for window in app.windows:
+        for tab in window.tabs:
+            for session in tab.sessions:
+                if strip_session_prefix(session.session_id) == target:
+                    return session
+    return None
+
+
+async def _open_session(app, connection, store, cwd):
+    """Launch Claude in cwd in a NEW PANE split below the active session. Falls
+    back to a fresh window if there's no live pane to split from."""
     import iterm2
-    window = await iterm2.Window.async_create(connection)
-    session = window.current_tab.current_session
+    active = store.active_session()
+    anchor = await _find_session(app, active["iterm_session_id"]) \
+        if active else None
+    if anchor is not None:
+        session = await anchor.async_split_pane(vertical=False)  # top/bottom
+    else:
+        window = await iterm2.Window.async_create(connection)
+        session = window.current_tab.current_session
     await session.async_send_text(f"cd {shlex.quote(cwd)} && claude\r")
     return session.session_id
 
@@ -214,7 +233,7 @@ async def handle_callback(cfg, store, app, connection, update,
         idx = int(data.split(":", 1)[1]) if data[4:].isdigit() else -1
         if 0 <= idx < len(cwds):
             cwd = cwds[idx]
-            sid = await open_fn(connection, cwd)
+            sid = await open_fn(app, connection, store, cwd)
             if sid:
                 # Bind a message to the new session so a reply routes to it
                 # (active also points here until another session streams).
